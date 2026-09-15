@@ -6,7 +6,7 @@
   "map.progress.unrestricted": "Encounters visited this act. No boss unlock requirement.",
   "settings.open": "Open Gravity appearance settings.",
   "settings.title": "Gravity settings",
-  "settings.encounters": "Encounters needed to unlock the boss",
+  "settings.encounters": "How many encounters are required to unlock the boss?",
   "settings.next_run": "Applies to new runs. In co-op, the host’s setting is used.",
   "settings.color": "Highlight color",
   "settings.reset_color": "Reset to gold",
@@ -19,6 +19,11 @@
   "settings.off": "Off",
   "settings.percent": "{0}%",
   "settings.appearance_title": "Gravity appearance",
-  "settings.reset_encounters": "Reset to 15",
-  "settings.encounter_hint": "0 unlocks the boss immediately. Higher values are capped to the encounters available each act."
+  "settings.encounter_hint": "Changes when the boss unlocks. Does not add encounters.",
+  "settings.encounters_none": "None required, boss is always available",
+  "settings.encounters_default": "After 15 encounters - Game default",
+  "settings.encounters_all": "After all encounters - A very long playthrough",
+  "settings.encounters_custom": "After a custom number",
+  "settings.custom_hint": "If fewer encounters are available, you must visit them all.",
+  "settings.custom_range": "0–999"
 }

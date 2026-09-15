@@ -27,7 +27,7 @@ Check(Progress(visits.ToArray()).Available.SetEquals(encounters.Except(visits).A
 var extraVisit = Progress(visits.Append(11).ToArray());
 Check(extraVisit.EncountersVisited == 16 && extraVisit.Available.Contains(100) && !extraVisit.Available.Contains(11),
     "Players can continue exploring beyond the unlock requirement");
-foreach (var requirement in new[] { 0, 1, 15, 60, 100, -1 })
+foreach (var requirement in new[] { 0, 1, 15, 60, 99, 999, -1 })
 {
     var target = requirement == -1 ? 60 : Math.Min(requirement, 60);
     GravityProgress<int> WithRule(IEnumerable<int> rooms) => new(0, encounters, [100, 101], rooms, requirement);

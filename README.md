@@ -49,10 +49,20 @@ its mod-settings panel. RitsuLib provides main-menu and pause-menu shortcuts;
 BaseLib provides a **Mod Configuration** entry in the settings menu. Both libraries are optional,
 and every entry point uses the same saved preferences.
 
-- **Encounters needed to unlock the boss:** Enter a number from 0 to 1000, or
-  use the minus/plus buttons. **0** unlocks the boss after the starting Ancient.
-  Higher requirements are capped to each act's encounter pool. **Reset to 15**
-  restores the default; there is no maximum encounter limit.
+**How many encounters are required to unlock the boss?**
+
+- **None required, boss is always available**
+- **After 15 encounters - Game default** (selected by default)
+- **After all encounters - A very long playthrough**
+- **After a custom number:** Enter **0–999** or use minus/plus. The custom number
+  starts at **15** and is remembered when switching choices. Entering **0** selects
+  None required. Selecting the 15-encounter option restores the default rule.
+
+These choices change when the boss unlocks; they do not add encounters. A custom
+number above the act's available encounters requires visiting them all. The
+starting Ancient must still be visited first, and double bosses remain sequential.
+The custom field and its capping explanation appear only with Custom selected.
+
 - **Applies to new runs. In co-op, the host’s setting is used.** A new run snapshots
   the setting; later acts, saves, and reloads retain it. Existing saves without a
   snapshot use 15. Clients' personal defaults are not overwritten.
@@ -134,12 +144,15 @@ In-game acceptance checks:
    votes. Restart with the same seed in a new run: the new run should animate.
 6. On the Mods page, select Gravity: settings should appear directly below the
    description. Switch to another mod and confirm its original information layout
-   returns. Navigate from the Gravity row through the number, minus/plus, reset,
+   returns. Navigate through the four encounter choices, custom number and minus/plus,
    color, and pulse controls, then back to the mod list.
    Check scrolling, Escape/back, a small viewport, and resizing. Enter a number and
    switch mods or leave without pressing Enter; reopen and restart to confirm
-   persistence. Verify numeric values survive opening the panel, and old All/off
-   preferences migrate to 1000/0.
+   persistence. Verify old All/off preferences select All/None, and custom numbers
+   survive switching choices and restarting. Check the initial custom value of 15,
+   entry of 0 and 999, capping 1000 to 999, and invalid input. Labels should wrap,
+   selecting a label should select its radio button, and hidden custom controls
+   should be skipped by keyboard/controller navigation.
    Repeat with neither library, only BaseLib, only RitsuLib, and both enabled.
    Gravity should appear once in each available library's settings panel, including
    RitsuLib's pause-menu entry. Edit through each entry point and verify the others
@@ -150,7 +163,7 @@ In-game acceptance checks:
    Drag both sliders from their handles and click above/below their tracks. Adjust
    color and pulse, including Off and reset to gold; confirm live examples, map
    updates, and persistence after restarting. The active encounter goal must stay put.
-8. Set the requirement to 0, 1, and a number larger than an act's pool across
+8. Choose None, the default 15, All, and custom values 1, 99, and 999 across
    separate new runs. Verify numeric capping without changing the saved default.
    The active run must stay unchanged after editing defaults, save/reload, and
    act transitions. Check boss unlock, continued exploration afterward, no ring or

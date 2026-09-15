@@ -24,6 +24,35 @@ internal sealed class GravitySettingsPanel
         var heading = Label(Localize("settings.encounters"), 26);
         heading.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         content.AddChild(heading);
+        var group = new ButtonGroup();
+        CheckBox Option(string text)
+        {
+            var optionRow = new HBoxContainer();
+            var option = new CheckBox { ButtonGroup = group, CustomMinimumSize = new Vector2(48, 48) };
+            StyleButton(option);
+            optionRow.AddChild(option);
+            var caption = Label(text, 22);
+            caption.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+            caption.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+            caption.MouseFilter = Control.MouseFilterEnum.Stop;
+            caption.MouseDefaultCursorShape = Control.CursorShape.PointingHand;
+            caption.GuiInput += input =>
+            {
+                if (input is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left })
+                {
+                    option.GrabFocus();
+                    option.ButtonPressed = true;
+                    caption.AcceptEvent();
+                }
+            };
+            optionRow.AddChild(caption);
+            content.AddChild(optionRow);
+            return option;
+        }
+        var none = Option(Localize("settings.encounters_none"));
+        var normal = Option(Localize("settings.encounters_default"));
+        var all = Option(Localize("settings.encounters_all"));
+        var custom = Option(Localize("settings.encounters_custom"));
         var row = new HBoxContainer();
         row.AddThemeConstantOverride("separation", 12);
         content.AddChild(row);
@@ -38,29 +67,39 @@ internal sealed class GravitySettingsPanel
         };
         number.AddThemeStyleboxOverride("normal", Box("131F29", "647079", 1));
         number.AddThemeStyleboxOverride("focus", Box("131F29", "EAC477", 2));
-        var resetEncounters = new Button { Text = Localize("settings.reset_encounters") };
-        StyleButton(resetEncounters);
         row.AddChild(minus);
         row.AddChild(number);
         row.AddChild(plus);
-        row.AddChild(resetEncounters);
+        row.AddChild(Label(Localize("settings.custom_range"), 20, "C4CCD1"));
+        var customHint = Label(Localize("settings.custom_hint"), 20, "C4CCD1");
+        customHint.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+        content.AddChild(customHint);
         var hint = Label(Localize("settings.encounter_hint"), 20, "C4CCD1");
         hint.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         content.AddChild(hint);
         var guidance = Label(Localize("settings.next_run"), 20, "C4CCD1");
         guidance.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         content.AddChild(guidance);
-        var numeric = GravitySettings.EncounterCount;
         var editing = false;
+        Action? refreshCustomFocus = null;
         void Refresh()
         {
-            number.Text = numeric.ToString(CultureInfo.InvariantCulture);
+            number.Text = GravitySettings.CustomEncounterCount.ToString(CultureInfo.InvariantCulture);
             editing = false;
+            none.SetPressedNoSignal(GravitySettings.Mode == GravitySettings.EncounterMode.None);
+            normal.SetPressedNoSignal(GravitySettings.Mode == GravitySettings.EncounterMode.Default);
+            all.SetPressedNoSignal(GravitySettings.Mode == GravitySettings.EncounterMode.All);
+            custom.SetPressedNoSignal(GravitySettings.Mode == GravitySettings.EncounterMode.Custom);
+            if (!custom.ButtonPressed && (number.HasFocus() || minus.HasFocus() || plus.HasFocus()))
+                none.GrabFocus();
+            row.Visible = customHint.Visible = custom.ButtonPressed;
+            refreshCustomFocus?.Invoke();
         }
         void SetNumber(int value)
         {
-            numeric = Math.Clamp(value, 0, GravitySettings.MaxEncounterCount);
-            GravitySettings.EncounterCount = numeric;
+            GravitySettings.CustomEncounterCount = value;
+            GravitySettings.Mode = GravitySettings.CustomEncounterCount == 0
+                ? GravitySettings.EncounterMode.None : GravitySettings.EncounterMode.Custom;
             Refresh();
             Changed();
         }
@@ -70,13 +109,24 @@ internal sealed class GravitySettingsPanel
             if (int.TryParse(number.Text, NumberStyles.None, CultureInfo.InvariantCulture, out var value)) SetNumber(value);
             else Refresh();
         }
+        void Select(GravitySettings.EncounterMode mode)
+        {
+            Commit();
+            GravitySettings.Mode = mode;
+            Refresh();
+            Changed();
+        }
+        // Programmatic selection when a caption is clicked also emits Toggled.
+        none.Toggled += selected => { if (selected) Select(GravitySettings.EncounterMode.None); };
+        normal.Toggled += selected => { if (selected) Select(GravitySettings.EncounterMode.Default); };
+        all.Toggled += selected => { if (selected) Select(GravitySettings.EncounterMode.All); };
+        custom.Toggled += selected => { if (selected) Select(GravitySettings.EncounterMode.Custom); };
         number.TextChanged += _ => editing = true;
         number.TextSubmitted += _ => Commit();
         number.FocusExited += Commit;
         _commit = Commit;
-        minus.Pressed += () => { Commit(); SetNumber(numeric - 1); };
-        plus.Pressed += () => { Commit(); SetNumber(numeric + 1); };
-        resetEncounters.Pressed += () => SetNumber(GravitySettings.DefaultEncounterCount);
+        minus.Pressed += () => { Commit(); SetNumber(GravitySettings.CustomEncounterCount - 1); };
+        plus.Pressed += () => { Commit(); SetNumber(GravitySettings.CustomEncounterCount + 1); };
         Refresh();
         content.AddChild(new HSeparator());
         var colorHeading = new HBoxContainer();
@@ -125,15 +175,29 @@ internal sealed class GravitySettingsPanel
         content.VisibilityChanged += () =>
         {
             if (!content.IsVisibleInTree()) { Flush(); return; }
-            numeric = GravitySettings.EncounterCount;
             Refresh();
             hue.SetValueNoSignal(GravitySettings.Hue);
             pulse.SetValueNoSignal(GravitySettings.PulsePercent);
             RefreshPulse();
         };
-        FocusControls = [minus, number, plus, resetEncounters, reset, hue, pulse];
+        FocusControls = [none, normal, all, custom, minus, number, plus, reset, hue, pulse];
+        // Relink only the custom section so host focus links at the panel edges survive.
+        void LinkCustomFocus()
+        {
+            custom.FocusNext = custom.FocusNeighborBottom = custom.GetPathTo(custom.ButtonPressed ? minus : reset);
+            reset.FocusPrevious = reset.FocusNeighborTop = reset.GetPathTo(custom.ButtonPressed ? plus : custom);
+        }
         // Paths can only be assigned once this panel is attached to its host.
-        content.Ready += () => GravitySettingsPopup.LinkFocus(FocusControls);
+        content.Ready += () =>
+        {
+            GravitySettingsPopup.LinkFocus(FocusControls);
+            refreshCustomFocus = LinkCustomFocus;
+            LinkCustomFocus();
+            minus.FocusNeighborRight = minus.GetPathTo(number);
+            number.FocusNeighborLeft = number.GetPathTo(minus);
+            number.FocusNeighborRight = number.GetPathTo(plus);
+            plus.FocusNeighborLeft = plus.GetPathTo(number);
+        };
     }
 
     private void Changed()

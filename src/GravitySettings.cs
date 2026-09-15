@@ -9,19 +9,40 @@ internal static class GravitySettings
     public const int DefaultPulsePercent = 25;
     public static int Hue { get; set; } = DefaultHue;
     public static int PulsePercent { get; set; } = DefaultPulsePercent;
+    public enum EncounterMode { None, Default, All, Custom }
     public const int DefaultEncounterCount = 15;
-    public const int MaxEncounterCount = 1000;
-    private static int _encounterCount = DefaultEncounterCount;
-    public static int EncounterCount
+    public const int MaxEncounterCount = 999;
+    public static EncounterMode Mode { get; set; } = EncounterMode.Default;
+    private static int _customEncounterCount = DefaultEncounterCount;
+    public static int CustomEncounterCount
     {
-        get => _encounterCount;
-        set => _encounterCount = Math.Clamp(value, 0, MaxEncounterCount);
+        get => _customEncounterCount;
+        set => _customEncounterCount = Math.Clamp(value, 0, MaxEncounterCount);
     }
-    public static int NextRunRequirement => EncounterCount;
+    public static int NextRunRequirement => Mode switch
+    {
+        EncounterMode.None => 0,
+        EncounterMode.All => -1,
+        EncounterMode.Custom => CustomEncounterCount,
+        _ => DefaultEncounterCount,
+    };
 
-    // Convert the former All/disabled preferences to the numeric control.
-    internal static int MigrateEncounterCount(int value, bool enabled) => !enabled ? 0
-        : value == -1 ? MaxEncounterCount : Math.Clamp(value, 0, MaxEncounterCount);
+    // Also reads preferences from before the four-choice UI existed.
+    internal static void RestoreEncounterPreferences(int encounters, bool enabled, int mode = -1,
+        int custom = DefaultEncounterCount)
+    {
+        CustomEncounterCount = custom;
+        if (Enum.IsDefined(typeof(EncounterMode), mode))
+        {
+            Mode = (EncounterMode)mode;
+            return;
+        }
+        if (encounters > 0 && encounters != DefaultEncounterCount) CustomEncounterCount = encounters;
+        Mode = !enabled || encounters == 0 ? EncounterMode.None
+            : encounters == -1 ? EncounterMode.All
+            : encounters == DefaultEncounterCount ? EncounterMode.Default : EncounterMode.Custom;
+    }
+
     public static Color HighlightColor => ColorAt(Hue);
     public static event Action? AppearanceChanged;
 
@@ -48,10 +69,11 @@ internal static class GravitySettings
         }
         Hue = ReadInt("hue", DefaultHue, 0, 360);
         PulsePercent = ReadInt("pulse_percent", DefaultPulsePercent, 0, 100);
-        var encounters = ReadInt("encounters", DefaultEncounterCount, -1, MaxEncounterCount);
+        var encounters = ReadInt("encounters", DefaultEncounterCount, -1, 1000);
         var enabled = config.GetValue("settings", "requirement_enabled", true);
-        EncounterCount = MigrateEncounterCount(encounters,
-            enabled.VariantType != Variant.Type.Bool || enabled.AsBool());
+        RestoreEncounterPreferences(encounters, enabled.VariantType != Variant.Type.Bool || enabled.AsBool(),
+            ReadInt("encounter_mode", -1, 0, 3),
+            ReadInt("custom_encounters", DefaultEncounterCount, 0, MaxEncounterCount));
     }
 
     public static Error Save()
@@ -59,7 +81,9 @@ internal static class GravitySettings
         using var config = new ConfigFile();
         config.SetValue("settings", "hue", Hue);
         config.SetValue("settings", "pulse_percent", PulsePercent);
-        config.SetValue("settings", "encounters", EncounterCount);
+        config.SetValue("settings", "encounters", NextRunRequirement);
+        config.SetValue("settings", "encounter_mode", (int)Mode);
+        config.SetValue("settings", "custom_encounters", CustomEncounterCount);
         var error = config.Save(Path);
         if (error != Error.Ok) GD.PushWarning($"[Gravity] Could not save settings: {error}");
         return error;

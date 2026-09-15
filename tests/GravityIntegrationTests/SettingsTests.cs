@@ -15,8 +15,9 @@ internal static class SettingsTests
 {
     public static void Run()
     {
+        VerifyPreferences();
         var info = JsonSerializationUtility.Options.GetTypeInfo(typeof(SerializableExtraRunFields));
-        foreach (var requirement in new[] { -1, 0, 1, 15, 60, 1000 })
+        foreach (var requirement in new[] { -1, 0, 1, 15, 60, 99, 999, 1000 })
         {
             var fields = new ExtraRunFields { StartedWithNeow = true, TestSubjectKills = 3, FreedRepy = true };
             GravityRunSettings.Set(fields, requirement);
@@ -42,14 +43,14 @@ internal static class SettingsTests
             network.Deserialize(reader);
             Check(GravityRunSettings.Get(network) == requirement && reader.ReadInt() == 123456, "Network round trip lost run settings or packet alignment");
 
-            var nextRunRequirement = requirement == -1 ? GravitySettings.MaxEncounterCount : requirement;
-            GravitySettings.EncounterCount = nextRunRequirement;
+            var nextRunRequirement = requirement == 1000 ? 999 : requirement;
+            GravitySettings.RestoreEncounterPreferences(nextRunRequirement, true);
             var message = new LobbyBeginRunMessage { playersInLobby = [], modifiers = [], seed = "gravity-test", act1 = "test" };
             writer.Reset();
             message.Serialize(writer);
             writer.WriteInt(654321);
             // The receiving client has its own default before reading the host's message.
-            GravitySettings.EncounterCount = 9;
+            GravitySettings.RestoreEncounterPreferences(9, true);
             reader.Reset(writer.Buffer);
             var received = new LobbyBeginRunMessage();
             received.Deserialize(reader);
@@ -72,7 +73,7 @@ internal static class SettingsTests
             GravityRunSettings.Initialize(soloRun);
             Check(GravityRunSettings.Get(soloRun.ExtraFields) == 9, "Next solo run must still use the client's default");
 
-            GravitySettings.EncounterCount = 9;
+            GravitySettings.RestoreEncounterPreferences(9, true);
             Check(GravityRunSettings.Get(loaded) == requirement, "Changing defaults must not change an existing run");
         }
         var legacy = (SerializableExtraRunFields)JsonSerializer.Deserialize("{}", info)!;
@@ -85,18 +86,62 @@ internal static class SettingsTests
             AccessTools.Property(typeof(RunState), nameof(RunState.ExtraFields)).SetValue(state, new ExtraRunFields());
             return state;
         }
-        GravitySettings.EncounterCount = 7;
+        GravitySettings.RestoreEncounterPreferences(7, true);
         var active = NewState();
         GravityRunSettings.Initialize(active);
-        GravitySettings.EncounterCount = 11;
+        GravitySettings.RestoreEncounterPreferences(11, true);
         GravityRunSettings.Initialize(active);
         var next = NewState();
         GravityRunSettings.Initialize(next);
         Check(GravityRunSettings.Get(active.ExtraFields) == 7 && GravityRunSettings.Get(next.ExtraFields) == 11,
             "Only a new playthrough should snapshot edited defaults");
-        GravitySettings.EncounterCount = 15;
+        GravitySettings.RestoreEncounterPreferences(15, true);
         VerifyVersionMatching();
         Console.WriteLine("Passed native JSON, save conversion, network packet, lobby rule, and next-run isolation checks.");
+    }
+
+    private static void VerifyPreferences()
+    {
+        Check(GravitySettings.Mode == GravitySettings.EncounterMode.Default
+            && GravitySettings.CustomEncounterCount == 15 && GravitySettings.NextRunRequirement == 15,
+            "Both the initial selection and custom value must default to 15");
+        foreach (var (legacy, enabled, expected, custom) in new[]
+        {
+            (15, true, 15, 15), (-1, true, -1, 15), (25, true, 25, 25),
+            (25, false, 0, 25), (-1, false, 0, 15), (0, true, 0, 15), (1000, true, 999, 999),
+        })
+        {
+            GravitySettings.RestoreEncounterPreferences(legacy, enabled);
+            Check(GravitySettings.NextRunRequirement == expected && GravitySettings.CustomEncounterCount == custom,
+                "Legacy preferences must retain their requirement and remembered custom value");
+        }
+        foreach (var mode in Enum.GetValues<GravitySettings.EncounterMode>())
+        {
+            GravitySettings.CustomEncounterCount = 37;
+            GravitySettings.Mode = mode;
+            var expected = mode switch
+            {
+                GravitySettings.EncounterMode.None => 0,
+                GravitySettings.EncounterMode.All => -1,
+                GravitySettings.EncounterMode.Custom => 37,
+                _ => 15,
+            };
+            Check(GravitySettings.NextRunRequirement == expected, "Each selection must resolve to the correct run rule");
+            // Restore precisely the three encounter values written to the config.
+            var storedCustom = GravitySettings.CustomEncounterCount;
+            GravitySettings.CustomEncounterCount = 15;
+            GravitySettings.RestoreEncounterPreferences(expected, true, (int)mode, storedCustom);
+            Check(GravitySettings.Mode == mode && GravitySettings.CustomEncounterCount == 37,
+                "Reloading a preset must preserve the custom number");
+            GravitySettings.Mode = GravitySettings.EncounterMode.Custom;
+            Check(GravitySettings.NextRunRequirement == 37, "Returning to Custom must restore its remembered value");
+        }
+        foreach (var (input, expected) in new[] { (-1, 0), (0, 0), (15, 15), (999, 999), (1000, 999) })
+        {
+            GravitySettings.CustomEncounterCount = input;
+            Check(GravitySettings.NextRunRequirement == expected, "Custom values must stay within 0–999");
+        }
+        GravitySettings.RestoreEncounterPreferences(15, true);
     }
 
     private static void VerifyVersionMatching()

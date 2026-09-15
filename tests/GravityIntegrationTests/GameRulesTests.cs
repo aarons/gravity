@@ -39,7 +39,7 @@ internal static class GameRulesTests
         foreach (var requirement in new[] { 1, 15, 60, 1000, -1 })
         {
             GravityRunSettings.Set(run.ExtraFields, requirement);
-            GravitySettings.EncounterCount = 0;
+            GravitySettings.RestoreEncounterPreferences(0, true);
             var capped = requirement == -1 ? 60 : Math.Min(requirement, 60);
             Check(GravityRules.Progress(run).RequiredEncounters == capped, "Rules must cap the snapshot to the act pool");
             Check(GravityTopBarProgress.Text(run) == $"15/{capped}", "Counter must show the snapshot, not edited defaults");
@@ -49,7 +49,7 @@ internal static class GameRulesTests
         GravityRunSettings.Set(run.ExtraFields, 0);
         Check(GravityRules.Progress(run).RequiredEncounters == 0, "Disabled requirement did not reach travel rules");
         Check(GravityTopBarProgress.Text(run) == "15", "Off must hide the denominator");
-        GravitySettings.EncounterCount = 15;
+        GravitySettings.RestoreEncounterPreferences(15, true);
         run.AddVisitedMapCoord(map.BossMapPoint.coord);
         Check(MapTravel.GetTravelablePointsFrom(run, map.BossMapPoint).SequenceEqual([map.SecondBossMapPoint!]), "Second boss order failed");
         Console.WriteLine("Passed real-game travel and room-history checks using the installed patches.");

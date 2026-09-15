@@ -59,12 +59,11 @@ internal static class GravityModSettings
         scroll.AddChild(panel.Content);
         var controls = panel.FocusControls;
         row.FocusNeighborRight = row.FocusNext = row.GetPathTo(controls[0]);
-        foreach (var control in controls) control.FocusNeighborLeft = control.GetPathTo(row);
+        foreach (var control in controls)
+            if (control.FocusNeighborLeft.ToString().Length == 0)
+                control.FocusNeighborLeft = control.GetPathTo(row);
         controls[0].FocusPrevious = controls[0].FocusNeighborTop = controls[0].GetPathTo(row);
         controls[^1].FocusNext = controls[^1].FocusNeighborBottom = controls[^1].GetPathTo(row);
-        // Keep horizontal navigation within the numeric input row.
-        for (var i = 0; i < 3; i++) controls[i].FocusNeighborRight = controls[i].GetPathTo(controls[i + 1]);
-        for (var i = 1; i < 4; i++) controls[i].FocusNeighborLeft = controls[i].GetPathTo(controls[i - 1]);
     }
 
     public static void Clear(NModInfoContainer info)
