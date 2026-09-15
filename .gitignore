@@ -1,0 +1,26 @@
+references/
+bin/
+obj/
+workshop/content/
+workshop/prepared/
+workshop/.prepared-manifest.sha256
+workshop/.package-*/
+workshop/.workflow.lock
+workshop/.release-state/
+__pycache__/
+/archive/
+/output/recordings/
+mod-uploader.log
+.godot/
+
+# Local OS and IDE files
+.DS_Store
+.idea/
+.vs/
+*.user
+*.suo
+
+workshop/workshop.json
+workshop/first-upload/
+workshop/.first-upload-*/
+.localization-review-*

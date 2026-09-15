@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <AssemblyName>Steamworks.NET</AssemblyName>
+    <RootNamespace>Steamworks</RootNamespace>
+    <AssemblyVersion>2025.163.0.0</AssemblyVersion>
+    <FileVersion>2025.163.0.0</FileVersion>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <!-- Upstream uses the same 64-bit ABI constants for x64 and arm64. -->
+    <DefineConstants>STEAMWORKS_LIN_OSX;STEAMWORKS_X64</DefineConstants>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <Deterministic>true</Deterministic>
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+  <Target Name="RequireSource" BeforeTargets="CoreCompile">
+    <Error Condition="!Exists('$(SteamworksSource)/com.rlabrecque.steamworks.net/Runtime/Steam.cs')"
+           Text="Set SteamworksSource to the extracted official 2025.163.0 source archive (see README.md)." />
+  </Target>
+  <ItemGroup>
+    <Compile Include="$(SteamworksSource)/com.rlabrecque.steamworks.net/Runtime/**/*.cs" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,51 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="Sts2PathDiscovery.props" />
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <LocalModDir>$([System.IO.Path]::Combine('$(ModsPath)', 'Gravity'))</LocalModDir>
+  </PropertyGroup>
+
+  <ItemGroup Condition="Exists('$(Sts2DataDir)')">
+    <Reference Include="0Harmony">
+      <HintPath>$(Sts2DataDir)/0Harmony.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="GodotSharp">
+      <HintPath>$(Sts2DataDir)/GodotSharp.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="sts2">
+      <HintPath>$(Sts2DataDir)/sts2.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="src/**/*.cs" />
+    <EmbeddedResource Include="localization/*.json" LogicalName="Gravity.Localization.%(Filename).json" />
+  </ItemGroup>
+
+  <Target Name="CheckDependencyPaths" BeforeTargets="ResolveReferences">
+    <Error Text="Slay the Spire 2 data not found at '$(Sts2DataDir)'"
+           Condition="'$(Sts2DataDir)' == '' or !Exists('$(Sts2DataDir)/sts2.dll') or !Exists('$(Sts2DataDir)/GodotSharp.dll')" />
+  </Target>
+
+  <Target Name="CopyToModsFolderOnBuild" AfterTargets="Build" Condition="'$(InstallMod)' == 'true'">
+    <MakeDir Directories="$(LocalModDir)" />
+    <Copy SourceFiles="$(TargetPath);Gravity.json"
+          DestinationFolder="$(LocalModDir)" />
+  </Target>
+
+  <Target Name="UninstallMod">
+    <Error Text="ModsPath must not be empty." Condition="'$(ModsPath)' == ''" />
+    <Message Text="Removing local development mod: $(LocalModDir)" Importance="high" />
+    <RemoveDir Directories="$(LocalModDir)" />
+  </Target>
+</Project>

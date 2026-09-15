@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- Do not resolve a reference assembly left by rebuilding the vendored library. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);vendor/**</DefaultItemExcludes>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="vendor/**/*.cs" />
+    <Reference Include="Steamworks.NET">
+      <HintPath>vendor/Steamworks.NET.dll</HintPath>
+    </Reference>
+    <EmbeddedResource Include="../../supported-languages.json" LogicalName="SupportedLanguages.json" />
+  </ItemGroup>
+</Project>
