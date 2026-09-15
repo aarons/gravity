@@ -40,8 +40,8 @@ for (var seed = 0; seed < 8; seed++)
     for (var row = 1; row <= 15; row++)
         for (var column = 0; column < 4; column++)
             bodies.Add(new(new Vector2(-450 + column * 265 + random.Next(-20, 21), 800 - row * 155), 44));
-    bodies.Add(new(new Vector2(0, -1900), 142));
-    if (seed % 2 == 0) bodies.Add(new(new Vector2(0, -2200), 142));
+    bodies.Add(new(new Vector2(0, -1900), 162, Boss: true));
+    if (seed % 2 == 0) bodies.Add(new(new Vector2(0, -2200), 162, Boss: true));
     var frames = FallingLayout.Simulate(bodies, -570, 510, 929);
     var final = frames[^1];
     Check(frames.All(frame => frame[0] == bodies[0].Position), "The Ancient must never move");
@@ -56,7 +56,23 @@ for (var seed = 0; seed < 8; seed++)
             Check(Vector2.Distance(final[i], final[j]) >= bodies[i].Radius + bodies[j].Radius - 1,
                 $"Overlapping encounter hit areas (seed {seed}, bodies {i}/{j})");
     }
-    Check(final.Select((p, i) => p.Y - bodies[i].Radius).Min() > -150, "Map did not compact enough");
+    var pileIndices = Enumerable.Range(0, bodies.Count).Where(i => !bodies[i].Boss).ToArray();
+    var bossIndices = Enumerable.Range(0, bodies.Count).Where(i => bodies[i].Boss).ToArray();
+    var pileTop = pileIndices.Min(i => final[i].Y - bodies[i].Radius);
+    Check(pileTop > -150, "Map did not compact enough");
+    foreach (var boss in bossIndices)
+    {
+        Check(final[boss].Y + bodies[boss].Radius <= pileTop - 63.9f, "Boss must land above the entire pile");
+        Check(frames.Skip((int)(FallingLayout.Steps * 0.8f)).All(frame => frame[boss] == final[boss]),
+            "Boss must stay fixed after landing");
+        Check(frames.All(frame => frame[boss].Y <= final[boss].Y + 0.01f), "Boss must not overshoot into the pile");
+    }
+    if (bossIndices.Length == 2)
+        Check(final[bossIndices[0]].X < final[bossIndices[1]].X
+            && final[bossIndices[0]].Y == final[bossIndices[1]].Y, "Double bosses must land in order on one row");
+    var withoutBosses = FallingLayout.Simulate(pileIndices.Select(i => bodies[i]).ToArray(), -570, 510, 929);
+    Check(frames.Select((frame, step) => pileIndices.Select(i => frame[i]).SequenceEqual(withoutBosses[step])).All(equal => equal),
+        "Bosses must never affect encounter physics");
     Check(final.Zip(frames[^2]).Max(pair => Vector2.Distance(pair.First, pair.Second)) < 1,
         "Pile was still moving when frozen");
     if (seed == 0)

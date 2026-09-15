@@ -5,11 +5,46 @@ namespace Gravity;
 /// <summary>Fixed-step circle physics, isolated from Godot and the game's random streams.</summary>
 internal static class FallingLayout
 {
-    public readonly record struct Body(Vector2 Position, float Radius, bool Anchored = false);
+    public readonly record struct Body(Vector2 Position, float Radius, bool Anchored = false, bool Boss = false);
     public const float StepSeconds = 1f / 60f;
     public const int Steps = 480;
 
     public static Vector2[][] Simulate(IReadOnlyList<Body> bodies, float left, float right, float floor)
+    {
+        // Bosses have their own landing row; they never collide with or weigh down the pile.
+        var pileIndices = Enumerable.Range(0, bodies.Count).Where(i => !bodies[i].Boss).ToArray();
+        var bossIndices = Enumerable.Range(0, bodies.Count).Where(i => bodies[i].Boss).ToArray();
+        var pile = pileIndices.Select(i => bodies[i]).ToArray();
+        var pileFrames = SimulatePile(pile, left, right, floor);
+        if (bossIndices.Length == 0) return pileFrames;
+
+        var pileTop = pileFrames[^1].Select((position, i) => position.Y - pile[i].Radius).Min();
+        var bossY = pileTop - 64f - bossIndices.Max(i => bodies[i].Radius);
+        var rowWidth = bossIndices.Sum(i => bodies[i].Radius * 2f) + (bossIndices.Length - 1) * 48f;
+        var x = (left + right - rowWidth) / 2f;
+        var destinations = new Vector2[bossIndices.Length];
+        for (var b = 0; b < bossIndices.Length; b++)
+        {
+            var radius = bodies[bossIndices[b]].Radius;
+            destinations[b] = new Vector2(x + radius, bossY);
+            x += radius * 2f + 48f;
+        }
+
+        var frames = new Vector2[Steps + 1][];
+        for (var step = 0; step <= Steps; step++)
+        {
+            var frame = frames[step] = new Vector2[bodies.Count];
+            for (var p = 0; p < pileIndices.Length; p++) frame[pileIndices[p]] = pileFrames[step][p];
+            // Let the pile fall first, then lower the bosses gently into place without overshoot.
+            var t = Math.Clamp((step / (float)Steps - 0.35f) / 0.45f, 0f, 1f);
+            var ease = 1f - MathF.Pow(1f - t, 3f);
+            for (var b = 0; b < bossIndices.Length; b++)
+                frame[bossIndices[b]] = Vector2.Lerp(bodies[bossIndices[b]].Position, destinations[b], ease);
+        }
+        return frames;
+    }
+
+    private static Vector2[][] SimulatePile(IReadOnlyList<Body> bodies, float left, float right, float floor)
     {
         var positions = bodies.Select(body => body.Position).ToArray();
         var velocities = new Vector2[bodies.Count];

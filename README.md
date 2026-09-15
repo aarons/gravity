@@ -10,12 +10,20 @@ fall into a compact pile around the starting Ancient.
   stay visible in the pile and cannot be selected again.
 - After encounter 15, only the boss becomes available. Double-boss acts retain
   their second boss, which unlocks after the first. Each act starts a fresh count.
-- On the first map opening, encounters and bosses fall with a simple circle
-  collision simulation. They settle in about four seconds; selection waits until
-  the pile settles. Closing the map early finishes the fall. Reopening keeps the
-  settled positions.
+- On the first map opening, encounters fall with a simple circle collision
+  simulation. Bosses descend into a separate row above the pile and stay there;
+  they never collide with ordinary encounters. Everything settles in about four
+  seconds; selection waits until the pile settles. Closing the map early finishes
+  the fall. Reopening keeps the settled positions.
 - The map scrolls only across the compact pile. Directional controller navigation
-  follows the new positions. A status line above the map shows progress.
+  follows the new positions. A compact `0/15` counter stays in the map's upper-left
+  corner.
+- Each boss has a 15-segment progress ring that fills clockwise from the left of
+  the bottom lock badge. Locked bosses stay dim; the available boss gets a steady
+  gold ring. The second
+  boss stays locked until the first is visited, even at `15/15`. Cleared bosses
+  keep a muted ring and check mark. Opening the map when a boss is available
+  scrolls to the boss row.
 - Visit order drives floor numbers and current-act room history. Progress uses
   the game's existing saved coordinates. The layout is deterministic and uses no
   gameplay RNG; a small `user://gravity_viewed_maps.cfg` file remembers which maps
@@ -54,13 +62,18 @@ process against your installed game assemblies; it does not open or change a run
 In-game acceptance checks:
 
 1. Start a new act. Open the map, check the fall, anchored Ancient, absent paths,
-   boss visibility, and shorter scrolling. Click during the fall: no room enters.
+   separate boss landing row, and shorter scrolling. Click during the fall: no
+   room enters. Close early and reopen: both the pile and boss row should be settled.
 2. Visit the Ancient. Choose rooms from different original rows, including a
    top-row room early. The boss stays locked and each floor advances by one.
 3. Reopen and save/reload. The pile and visited rooms should stay fixed; unknown
    rooms should show the correct revealed icon and history.
-4. Complete 15 encounters. Only the boss is selectable. Check a double-boss act
-   and entering the next act.
+4. Check the corner counter and boss rings at 0, 1, 14, and 15 encounters. The
+   first filled segment should be immediately left of the lock; the counter
+   should stay clear of the boss when scrolling. Complete 15: the map opens on
+   the boss row and only the available boss has a steady gold ring and is selectable.
+   In a double-boss act, the second stays dim with its lock until the first is
+   visited. Check that the next act resets progress to `0/15`.
 5. Check mouse, controller, drawing tools, fast mode, a small viewport, and co-op
    votes. Restart with the same seed in a new run: the new run should animate.
 

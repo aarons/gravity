@@ -1,7 +1,4 @@
 {
   "mod.loaded": "Mod loaded.",
-  "map.falling": "Gravity \u2014 Let the encounters settle\u2026",
-  "map.ancient_first": "Gravity \u2014 Visit the Ancient first",
-  "map.progress": "Gravity \u2014 {0} / {1} encounters visited \u00b7 Choose any unvisited encounter",
-  "map.boss_unlocked": "Gravity \u2014 Boss unlocked"
+  "map.progress": "{0}/{1}"
 }
