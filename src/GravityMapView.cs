@@ -36,7 +36,12 @@ internal sealed class GravityMapView
     public static void Attach(NMapScreen screen, RunState run, ulong seed,
         Dictionary<MapCoord, NMapPoint> points)
     {
-        if (Get(screen) is { } old) old._progressDisplay.Free();
+        if (Get(screen) is { } old)
+        {
+            old.UnsubscribeAppearance();
+            screen.TreeExiting -= old.UnsubscribeAppearance;
+            old._progressDisplay.Free();
+        }
         Views.Remove(screen);
         if (GravityRules.Applies(run))
         {
@@ -83,9 +88,13 @@ internal sealed class GravityMapView
             ViewedMaps.Load("user://gravity_viewed_maps.cfg");
             _loaded = true;
         }
-        _progressDisplay = new GravityProgressDisplay(screen, _nodes.Select((node, i) =>
+        _progressDisplay = new GravityProgressDisplay(_nodes.Select((node, i) =>
             (Node: node, Radius: bodies[i].Radius - 12f)).Where(item => item.Node is NBossMapPoint));
+        GravitySettings.AppearanceChanged += UpdateStatus;
+        screen.TreeExiting += UnsubscribeAppearance;
     }
+
+    private void UnsubscribeAppearance() => GravitySettings.AppearanceChanged -= UpdateStatus;
 
     public void Open()
     {
@@ -105,7 +114,7 @@ internal sealed class GravityMapView
         SetScroll(!Falling && _nodes.Any(node => node is NBossMapPoint
             && progress.Available.Contains(node.Point.coord)) ? MaxScroll : MinScroll);
         UpdateStatus();
-        _progressDisplay.UpdatePositions(_screen.Size.X);
+        _progressDisplay.UpdatePositions();
         UpdateNavigation();
         // Keep the game's first-map tutorial: its completion gates the Ancient's click handler.
         _screen.CallDeferred("InitMapPrompt");
@@ -127,7 +136,7 @@ internal sealed class GravityMapView
                 UpdateStatus();
             }
         }
-        _progressDisplay.UpdatePositions(_screen.Size.X);
+        _progressDisplay.UpdatePositions();
     }
 
     public void Finish()
@@ -171,7 +180,7 @@ internal sealed class GravityMapView
     public void UpdateStatus()
     {
         var progress = GravityRules.Progress(_run);
-        _progressDisplay.Update(progress.EncountersVisited, Falling);
+        _progressDisplay.Update(progress.EncountersVisited, progress.RequiredEncounters, Falling);
     }
 
     public void UpdateNavigation()

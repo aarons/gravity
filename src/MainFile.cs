@@ -12,6 +12,7 @@ public static class MainFile
 
     public static void Initialize()
     {
+        GravitySettings.Load();
         new Harmony(ModId).PatchAll(typeof(MainFile).Assembly);
         GD.Print($"[{ModId}] {Localize("mod.loaded")}");
     }

@@ -1,4 +1,24 @@
 {
   "mod.loaded": "Mod loaded.",
-  "map.progress": "{0}/{1}"
+  "map.progress": "{0}/{1}",
+  "map.progress.title": "Encounters",
+  "map.progress.description": "Encounters visited this act. Visit {0} to unlock the boss.",
+  "map.progress.unrestricted": "Encounters visited this act. No boss unlock requirement.",
+  "settings.open": "Open Gravity appearance settings.",
+  "settings.title": "Gravity settings",
+  "settings.encounters": "Encounters needed to unlock the boss",
+  "settings.next_run": "Applies to new runs. In co-op, the host’s setting is used.",
+  "settings.color": "Highlight color",
+  "settings.reset_color": "Reset to gold",
+  "settings.pulse": "Encounter pulse",
+  "settings.preview": "Live preview",
+  "settings.boss_preview": "Boss unlock progress",
+  "settings.pulse_preview": "Available encounter",
+  "settings.done": "Done",
+  "settings.save_error": "Could not save settings. Please try again.",
+  "settings.off": "Off",
+  "settings.percent": "{0}%",
+  "settings.appearance_title": "Gravity appearance",
+  "settings.reset_encounters": "Reset to 15",
+  "settings.encounter_hint": "0 unlocks the boss immediately. Higher values are capped to the encounters available each act."
 }

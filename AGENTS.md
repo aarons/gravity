@@ -21,6 +21,12 @@
 # General Principles
 
 - This mod has localizations for the game, as well as Steam Workshop entries. For new work, focus on making changes in English. A dedicated prompt will be used when we are ready to update localizations, except for changelogs as described below.
+- Keep player-facing copy concise. Trust players to infer details that are clear
+  from the UI or normal play; explain exceptions only when they help the player
+  make a decision or avoid likely confusion. Avoid exhaustive qualifications.
+  For example, the encounter tooltip needs only "Encounters visited this act.
+  Visit {0} to unlock the boss." Omit "The starting Ancient and bosses do not
+  count." The counter and boss unlock flow make that detail apparent in play.
 
 # Changelog Format
 

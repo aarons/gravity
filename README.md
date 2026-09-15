@@ -6,21 +6,29 @@ fall into a compact pile around the starting Ancient.
 ## How it works
 
 - The starting Ancient stays in its original position and must be visited first.
-- Then choose **any 15 distinct encounters**, in any order. Visited encounters
+- Then choose **any unvisited encounter**, in any order. Visited encounters
   stay visible in the pile and cannot be selected again.
-- After encounter 15, only the boss becomes available. Double-boss acts retain
-  their second boss, which unlocks after the first. Each act starts a fresh count.
+- By default, the boss unlocks after **15 encounters**. You can keep exploring
+  after unlocking it; entering the boss ends ordinary encounter selection.
+  Double-boss acts retain their second boss, which unlocks after the first.
+  Each act starts a fresh count.
 - On the first map opening, encounters fall with a simple circle collision
   simulation. Bosses descend into a separate row above the pile and stay there;
   they never collide with ordinary encounters. Everything settles in about four
   seconds; selection waits until the pile settles. Closing the map early finishes
   the fall. Reopening keeps the settled positions.
 - The map scrolls only across the compact pile. Directional controller navigation
-  follows the new positions. A compact `0/15` counter stays in the map's upper-left
-  corner.
-- Each boss has a 15-segment progress ring that fills clockwise from the left of
-  the bottom lock badge. Locked bosses stay dim; the available boss gets a steady
-  gold ring. The second
+  follows the new positions. The status bar's stairs indicator shows encounter
+  progress (`0/15`, `15/15`, and beyond) in place of total floors climbed, both on
+  the map and in rooms. The denominator is the boss unlock requirement, not a
+  visit limit. Its **Encounters** tooltip explains the per-act goal; click the
+  stairs or number to open settings. With the requirement off, only the number
+  visited is shown. There is no separate map counter.
+- Each boss has a progress ring that fills counterclockwise from the
+  left of the lock badge at 12 o'clock, around the bottom and up to its right.
+  Locked bosses stay dim; the available boss gets a steady highlight ring
+  (gold by default). The ring has one segment per required encounter, switching
+  to a continuous track above 40. The second
   boss stays locked until the first is visited, even at `15/15`. Cleared bosses
   keep a muted ring and check mark. Opening the map when a boss is available
   scrolls to the boss row.
@@ -29,9 +37,51 @@ fall into a compact pile around the starting Ancient.
   gameplay RNG; a small `user://gravity_viewed_maps.cfg` file remembers which maps
   have already animated.
 
+## Settings
+
+### Run settings
+
+Open the game's **Mods** page and select **Gravity**. Run and appearance settings
+are shown directly in its information panel.
+
+If **BaseLib** or **RitsuLib** is installed and enabled, Gravity also appears in
+its mod-settings panel. RitsuLib provides main-menu and pause-menu shortcuts;
+BaseLib provides a **Mod Configuration** entry in the settings menu. Both libraries are optional,
+and every entry point uses the same saved preferences.
+
+- **Encounters needed to unlock the boss:** Enter a number from 0 to 1000, or
+  use the minus/plus buttons. **0** unlocks the boss after the starting Ancient.
+  Higher requirements are capped to each act's encounter pool. **Reset to 15**
+  restores the default; there is no maximum encounter limit.
+- **Applies to new runs. In co-op, the host’s setting is used.** A new run snapshots
+  the setting; later acts, saves, and reloads retain it. Existing saves without a
+  snapshot use 15. Clients' personal defaults are not overwritten.
+
+### In-run appearance
+
+Click the **stairs icon or encounter count** in the top bar, on the map or in a
+room, to open the smaller appearance panel with live boss-ring and encounter-pulse
+examples.
+
+- **Highlight color:** Choose directly on the slider's color spectrum and preview
+  it immediately on boss progress rings and in the example. **Reset to gold**
+  restores the default. Both sliders have large drag handles and click targets.
+- **Encounter pulse:** Adjust idle pulse strength from **Off** to **100%** (the
+  original effect), with **25%** as the default. Changes apply immediately; hover
+  and press feedback remain.
+
+The inline and library panels scroll as needed and support keyboard/controller
+focus. The in-run appearance popup scales to the viewport and closes with
+Escape/back or Done. Changes save automatically; leaving a settings panel also
+commits a number still being edited.
+
+Preferences persist in `user://gravity.cfg`. The active encounter requirement is
+stored in the normal run save's extra fields and included in multiplayer data.
+All co-op players must use the same Gravity version. Color and pulse are personal.
+
 Requires the Steam game and .NET 9 SDK to build. References the installed game
-assemblies, including its bundled Harmony; no separate Harmony mod, BaseLib, or
-asset pack is required. The mod is marked `affects_gameplay: true`.
+assemblies, including its bundled Harmony; no separate Harmony mod, BaseLib,
+RitsuLib, or asset pack is required. The mod is marked `affects_gameplay: true`.
 
 ## Development status and compatibility
 
@@ -68,14 +118,48 @@ In-game acceptance checks:
    top-row room early. The boss stays locked and each floor advances by one.
 3. Reopen and save/reload. The pile and visited rooms should stay fixed; unknown
    rooms should show the correct revealed icon and history.
-4. Check the corner counter and boss rings at 0, 1, 14, and 15 encounters. The
-   first filled segment should be immediately left of the lock; the counter
-   should stay clear of the boss when scrolling. Complete 15: the map opens on
-   the boss row and only the available boss has a steady gold ring and is selectable.
+4. Check the status bar counter and boss rings at 0, 1, 14, and 15 encounters.
+   Hover or controller-focus the stairs: the tooltip should say **Encounters**.
+   Check that `15/15` fits beside the boss icon, including in a small viewport,
+   and that the counter updates in rooms and after reloading. The starting
+   Ancient and both bosses should leave the count unchanged. The first filled
+   segment should be immediately left of the lock at 12 o'clock, with progress
+   continuing counterclockwise around the bottom and ending to its right.
+   Complete 15: the map opens on
+   the boss row and the available boss has a steady gold ring. Unvisited ordinary
+   encounters remain selectable; visit another and check `16/15` and the full ring.
    In a double-boss act, the second stays dim with its lock until the first is
    visited. Check that the next act resets progress to `0/15`.
 5. Check mouse, controller, drawing tools, fast mode, a small viewport, and co-op
    votes. Restart with the same seed in a new run: the new run should animate.
+6. On the Mods page, select Gravity: settings should appear directly below the
+   description. Switch to another mod and confirm its original information layout
+   returns. Navigate from the Gravity row through the number, minus/plus, reset,
+   color, and pulse controls, then back to the mod list.
+   Check scrolling, Escape/back, a small viewport, and resizing. Enter a number and
+   switch mods or leave without pressing Enter; reopen and restart to confirm
+   persistence. Verify numeric values survive opening the panel, and old All/off
+   preferences migrate to 1000/0.
+   Repeat with neither library, only BaseLib, only RitsuLib, and both enabled.
+   Gravity should appear once in each available library's settings panel, including
+   RitsuLib's pause-menu entry. Edit through each entry point and verify the others
+   show the same values, appearance updates live, and the active run goal stays put.
+7. Open appearance settings by clicking the stairs, then the number, both in a room
+   and on the map. Only color, pulse, and live previews should appear. Check keyboard
+   and controller navigation, focus return, Escape/back, Done, and a small viewport.
+   Drag both sliders from their handles and click above/below their tracks. Adjust
+   color and pulse, including Off and reset to gold; confirm live examples, map
+   updates, and persistence after restarting. The active encounter goal must stay put.
+8. Set the requirement to 0, 1, and a number larger than an act's pool across
+   separate new runs. Verify numeric capping without changing the saved default.
+   The active run must stay unchanged after editing defaults, save/reload, and
+   act transitions. Check boss unlock, continued exploration afterward, no ring or
+   denominator at 0, and sequential double bosses. The Ancient must still be
+   visited first. Load a pre-settings save and confirm a goal of 15.
+9. In co-op, start with different local defaults and check that everyone uses the
+   host's requirement. Repeat after saving/loading and a client reconnect. Check
+   that the client's next solo run still uses their own default, appearance settings
+   remain independent, and a mismatched Gravity version is rejected on connection.
 
 ## Everyday commands
 
@@ -223,3 +307,19 @@ Tests create synthetic translations and IDs only in temporary fixtures, mock Cod
 and uploads, and exercise the publisher through an in-memory Steam adapter.
 No tests install into the game, invoke real translation models, or connect to Steam.
 Compilation and offline tests do not verify in-game UI or a live Workshop upload.
+
+### Optional settings integrations
+
+The adapters use [BaseLib's custom `ModConfig` UI](https://github.com/Alchyr/BaseLib-StS2/blob/master/Config/ModConfig.cs)
+and [RitsuLib's custom settings controls](https://sts2-ritsulib.ritsukage.com/guide/mod-settings).
+They register on the first main-menu initialization after mod loading, independent
+of mod load order. Gravity has no compile-time references or required manifest
+dependencies on either library. An incompatible optional API logs a warning and
+leaves the native Mods panel available. BaseLib may create an empty adapter config
+file; Gravity's actual preferences remain in `user://gravity.cfg`.
+
+To check adapter contracts against local library DLLs without launching the game,
+set `GRAVITY_BASELIB_DLL` and/or `GRAVITY_RITSULIB_DLL` to their installed paths
+when running `dotnet run --project tests/GravityIntegrationTests`. For RitsuLib's
+multi-version distribution, use the DLL under `compat/<game-version>/` and keep
+its companion `shared/` directory in place.

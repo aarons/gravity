@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using Gravity;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Map;
 using MegaCrit.Sts2.Core.Runs;
@@ -16,6 +17,7 @@ internal static class GameRulesTests
         AccessTools.Field(typeof(RunState), "_mapPointHistory").SetValue(run, history);
         var map = new TestMap();
         run.Map = map;
+        AccessTools.Property(typeof(RunState), nameof(RunState.ExtraFields)).SetValue(run, new ExtraRunFields());
         var first = MapTravel.GetTravelablePointsFrom(run, map.StartingMapPoint).ToArray();
         Check(first.SequenceEqual([map.StartingMapPoint]), "Patched API must require the Ancient");
         run.AddVisitedMapCoord(map.StartingMapPoint.coord);
@@ -32,7 +34,22 @@ internal static class GameRulesTests
             history[0].Add(entry);
             Check(ReferenceEquals(run.GetHistoryEntryFor(new MapLocation(point.coord, 0)), entry), "History used row instead of visit order");
         }
-        Check(MapTravel.GetTravelablePointsFrom(run, run.CurrentMapPoint!).SequenceEqual([map.BossMapPoint]), "Boss did not unlock at 15");
+        var unlocked = MapTravel.GetTravelablePointsFrom(run, run.CurrentMapPoint!).ToArray();
+        Check(unlocked.Length == 46 && unlocked.Contains(map.BossMapPoint), "Boss unlock must preserve the remaining encounters");
+        foreach (var requirement in new[] { 1, 15, 60, 1000, -1 })
+        {
+            GravityRunSettings.Set(run.ExtraFields, requirement);
+            GravitySettings.EncounterCount = 0;
+            var capped = requirement == -1 ? 60 : Math.Min(requirement, 60);
+            Check(GravityRules.Progress(run).RequiredEncounters == capped, "Rules must cap the snapshot to the act pool");
+            Check(GravityTopBarProgress.Text(run) == $"15/{capped}", "Counter must show the snapshot, not edited defaults");
+            Check(MapTravel.GetTravelablePointsFrom(run, run.CurrentMapPoint!).Contains(map.BossMapPoint) == (15 >= capped),
+                "Travel must use the same snapshot as the counter");
+        }
+        GravityRunSettings.Set(run.ExtraFields, 0);
+        Check(GravityRules.Progress(run).RequiredEncounters == 0, "Disabled requirement did not reach travel rules");
+        Check(GravityTopBarProgress.Text(run) == "15", "Off must hide the denominator");
+        GravitySettings.EncounterCount = 15;
         run.AddVisitedMapCoord(map.BossMapPoint.coord);
         Check(MapTravel.GetTravelablePointsFrom(run, map.BossMapPoint).SequenceEqual([map.SecondBossMapPoint!]), "Second boss order failed");
         Console.WriteLine("Passed real-game travel and room-history checks using the installed patches.");

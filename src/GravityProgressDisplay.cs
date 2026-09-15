@@ -7,27 +7,15 @@ namespace Gravity;
 /// <summary>Non-interactive progress artwork; the game's map points still own input and focus.</summary>
 internal sealed class GravityProgressDisplay
 {
-    private static readonly Color Gold = new("eac477");
-    private static readonly Color MutedGold = new("a89166");
     private static readonly Color Track = new("514b43");
     private static readonly Color Ink = new("211c18");
-    private readonly Label _counter;
     private readonly List<(NMapPoint Boss, Control Ring, float Radius)> _bosses = [];
     private int _visited;
     private bool _falling;
+    private int _required;
 
-    public GravityProgressDisplay(NMapScreen screen, IEnumerable<(NMapPoint Node, float Radius)> bosses)
+    public GravityProgressDisplay(IEnumerable<(NMapPoint Node, float Radius)> bosses)
     {
-        _counter = new Label
-        {
-            Name = "GravityProgress", MouseFilter = Control.MouseFilterEnum.Ignore,
-            Size = new Vector2(120f, 36f), HorizontalAlignment = HorizontalAlignment.Left
-        };
-        _counter.AddThemeFontSizeOverride("font_size", 26);
-        _counter.AddThemeColorOverride("font_color", Gold);
-        _counter.AddThemeColorOverride("font_outline_color", Ink);
-        _counter.AddThemeConstantOverride("outline_size", 6);
-        screen.AddChild(_counter);
         foreach (var (boss, radius) in bosses)
         {
             var ring = new Control { Name = "GravityBossProgress", MouseFilter = Control.MouseFilterEnum.Ignore };
@@ -38,31 +26,27 @@ internal sealed class GravityProgressDisplay
         }
     }
 
-    public void Update(int visited, bool falling)
+    public void Update(int visited, int required, bool falling)
     {
-        _visited = Math.Clamp(visited, 0, GravityProgress<MapCoord>.RequiredEncounters);
+        _visited = visited;
+        _required = required;
         _falling = falling;
-        _counter.Text = string.Format(MainFile.Localize("map.progress"), _visited,
-            GravityProgress<MapCoord>.RequiredEncounters);
         foreach (var (boss, ring, _) in _bosses)
         {
+            ring.Visible = required > 0;
             boss.Modulate = boss.State == MapPointState.Untravelable ? new Color(0.6f, 0.6f, 0.6f) : Colors.White;
             ring.QueueRedraw();
         }
     }
 
-    public void UpdatePositions(float screenWidth)
+    public void UpdatePositions()
     {
-        // The parchment is centered on screen. Keep the counter inset at its upper-left
-        // corner, independent of the scrolling encounters and boss row.
-        _counter.Position = new Vector2(Math.Max(30f, screenWidth / 2f - 560f), 105f);
         foreach (var (boss, ring, _) in _bosses)
             ring.Position = boss.Position + boss.Size / 2f;
     }
 
     public void Free()
     {
-        _counter.QueueFree();
         foreach (var (_, ring, _) in _bosses)
             if (GodotObject.IsInstanceValid(ring)) ring.QueueFree();
     }
@@ -71,23 +55,36 @@ internal sealed class GravityProgressDisplay
     {
         var available = !_falling && boss.State == MapPointState.Travelable;
         var cleared = boss.State == MapPointState.Traveled;
-        var color = available ? Gold : cleared ? MutedGold : _visited < GravityProgress<MapCoord>.RequiredEncounters
-            ? MutedGold : new Color("81796c");
-        const int count = GravityProgress<MapCoord>.RequiredEncounters;
-        // Start immediately left of the bottom lock and fill clockwise, leaving
+        DrawArtwork(ring, radius, _visited, _required, available, cleared);
+    }
+
+    internal static void DrawArtwork(Control ring, float radius, int visited, int required, bool available, bool cleared)
+    {
+        if (required <= 0) return;
+        var gold = GravitySettings.HighlightColor;
+        var muted = gold.Lerp(new Color("625f59"), 0.45f);
+        var color = available ? gold : cleared || visited < required ? muted : new Color("81796c");
+        // Dense requirements use a continuous track so tiny segments don't overlap.
+        var count = Math.Min(required, 40);
+        var filled = Math.Clamp(visited / (float)required, 0f, 1f) * count;
+        // Start immediately left of the top lock and fill counterclockwise, leaving
         // room for the badge so neither the first nor last segment hides behind it.
         var lockGap = MathF.Asin(Math.Clamp(20f / radius, 0f, 1f));
         var segmentAngle = (Mathf.Tau - 2f * lockGap) / count;
         for (var i = 0; i < count; i++)
         {
-            var start = Mathf.Pi / 2f + lockGap + i * segmentAngle + 0.035f;
-            var end = start + segmentAngle - 0.07f;
-            ring.DrawArc(Vector2.Zero, radius, start, end, 8, Ink, 8f, true);
-            ring.DrawArc(Vector2.Zero, radius, start, end, 8, i < _visited ? color : Track, 4f, true);
+            var gap = required > 40 ? 0f : Math.Min(0.035f, segmentAngle * 0.15f);
+            var end = -Mathf.Pi / 2f - lockGap - i * segmentAngle - gap;
+            var start = end - segmentAngle + gap * 2f;
+            var points = Math.Max(8, (int)MathF.Ceiling((end - start) / 0.09f) + 1);
+            ring.DrawArc(Vector2.Zero, radius, start, end, points, Ink, 8f, true);
+            ring.DrawArc(Vector2.Zero, radius, start, end, points, Track, 4f, true);
+            var portion = Math.Clamp(filled - i, 0f, 1f);
+            if (portion > 0f) ring.DrawArc(Vector2.Zero, radius, end - (end - start) * portion, end, points, color, 4f, true);
         }
 
         // A lock/check badge makes sequential boss availability readable without relying on color.
-        var badge = new Vector2(0f, radius);
+        var badge = new Vector2(0f, -radius);
         ring.DrawCircle(badge, 16f, Ink);
         if (available || cleared)
         {

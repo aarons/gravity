@@ -22,7 +22,33 @@ foreach (var room in new[] { 60, 4, 51, 7, 9, 40, 20, 3, 2, 31, 17, 15, 33, 44, 
     Check(!after.Available.Overlaps(visits), "Visited rooms must never be available");
     Check(after.EncountersVisited == visits.Count - 1, "Ancient must not count toward the 15");
 }
-Check(Progress(visits.ToArray()).Available.SetEquals([100]), "Only the boss unlocks at 15");
+Check(Progress(visits.ToArray()).Available.SetEquals(encounters.Except(visits).Append(100)),
+    "Boss unlocks at 15 while unvisited encounters remain available");
+var extraVisit = Progress(visits.Append(11).ToArray());
+Check(extraVisit.EncountersVisited == 16 && extraVisit.Available.Contains(100) && !extraVisit.Available.Contains(11),
+    "Players can continue exploring beyond the unlock requirement");
+foreach (var requirement in new[] { 0, 1, 15, 60, 100, -1 })
+{
+    var target = requirement == -1 ? 60 : Math.Min(requirement, 60);
+    GravityProgress<int> WithRule(IEnumerable<int> rooms) => new(0, encounters, [100, 101], rooms, requirement);
+    Check(WithRule([]).Available.SetEquals([0]), "Even unrestricted runs must start at the Ancient");
+    Check(WithRule([0]).RequiredEncounters == target, "All and oversized requirements match the act pool");
+    for (var n = 0; n <= 60; n++)
+    {
+        var path = new[] { 0 }.Concat(encounters.Take(n)).ToArray();
+        var state = WithRule(path);
+        Check(state.Available.Contains(100) == (n >= target), "Boss must unlock exactly at the chosen minimum");
+        Check(!state.Available.Contains(101), "Second boss stays locked until first boss");
+        Check(state.Available.Intersect(encounters).Count() == 60 - n, "No encounter cap or revisits");
+        if (n >= target)
+        {
+            Check(WithRule(path.Append(100)).Available.SetEquals([101]), "Entering boss closes encounters");
+            Check(WithRule(path.Concat(new[] { 100, 101 })).Available.Count == 0, "Boss chain ends the act");
+        }
+    }
+}
+Check(new GravityProgress<int>(0, [1, 2, 2], [100], [0, 1], -1).RequiredEncounters == 2,
+    "All counts distinct nodes only");
 Check(Progress(visits.Concat(visits).ToArray()).EncountersVisited == 15, "Duplicate visits do not add progress");
 visits.Add(100);
 Check(Progress(visits.ToArray()).Available.SetEquals([101]), "Double boss unlocks sequentially");

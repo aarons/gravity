@@ -22,5 +22,7 @@ static void Run()
     Console.WriteLine($"Successfully applied {patched.Length} Gravity patches to the installed game assemblies.");
     if (patched.Length < 15) throw new Exception("Missing game patches");
     GameRulesTests.Run();
+    SettingsTests.Run();
+    OptionalSettingsTests.Run();
     harmony.UnpatchAll(harmony.Id);
 }
