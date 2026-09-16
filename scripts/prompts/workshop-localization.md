@@ -37,7 +37,7 @@ Follow regional conventions: latam/esp is Latin American Spanish, while
 spanish/spa is Castilian Spanish. supported-languages.json defines the mapping.
 
 Do not edit English, in-game translations, other locales, review fingerprints,
-workshop/workshop.json, workshop/settings.json, changelogs, code, or documentation. Do not commit, package,
+workshop/workshop.json, workshop/settings.json, changelogs, code, or documentation. Do not commit, prepare releases,
 publish, connect to Steam, or invoke update-localizations.sh. The caller validates
 this file and records its fingerprints after your successful run; other locales
 may still be stale. Preserve correct text unchanged when no edit is needed.

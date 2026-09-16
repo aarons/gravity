@@ -7,10 +7,12 @@ namespace WorkshopLocalization;
 internal sealed record Preview(string Name, int Type, string Url = "");
 internal sealed record RemoteItem(ulong ItemId, uint AppId, ulong Owner, string Title, string Description,
     string Metadata, ulong[] Dependencies, uint[] Descriptors, Preview[] Previews);
+internal sealed record CreatedItem(ulong ItemId, bool NeedsLegalAgreement);
 
 internal interface IWorkshopClient : IDisposable
 {
     ulong UserId { get; }
+    CreatedItem CreateItem();
     RemoteItem Read(ulong itemId, string language);
     void UploadContent(PreparedRelease release, RemoteItem previous);
     void UploadPreviews(PreparedRelease release, RemoteItem previous);
@@ -19,7 +21,7 @@ internal interface IWorkshopClient : IDisposable
     void UploadListing(ulong itemId, Listing listing);
 }
 
-internal sealed class PreparedRelease
+internal sealed record PreparedRelease
 {
     public required string Workspace { get; init; }
     public required ulong ItemId { get; init; }
@@ -32,22 +34,22 @@ internal sealed class PreparedRelease
     {
         using var manifest = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(workspace, "release-manifest.json")));
         var root = manifest.RootElement;
-        if (root.GetProperty("version").GetInt32() != 1 || root.GetProperty("appId").GetUInt32() != 2868840)
-            throw new InvalidDataException("Unsupported prepared release. Run ./package.sh again.");
-        var item = ListingFiles.ReadItemId(workspace, required: true)!.Value;
-        if (root.GetProperty("publishedFileId").GetString() != item.ToString(System.Globalization.CultureInfo.InvariantCulture))
+        if (root.GetProperty("version").GetInt32() != 2 || root.GetProperty("appId").GetUInt32() != 2868840)
+            throw new InvalidDataException("Unsupported prepared release. Run ./prepare.sh again.");
+        var item = ListingFiles.ReadItemId(workspace, required: false);
+        if (root.GetProperty("publishedFileId").GetString() != item?.ToString(System.Globalization.CultureInfo.InvariantCulture))
             throw new InvalidDataException("Prepared item ID changed.");
         var expected = root.GetProperty("files").EnumerateObject().ToDictionary(p => p.Name, p => p.Value.GetString());
         var actual = Directory.GetFiles(workspace, "*", SearchOption.AllDirectories)
             .Select(path => Path.GetRelativePath(workspace, path).Replace('\\', '/'))
             .Where(path => path != "release-manifest.json").ToHashSet(StringComparer.Ordinal);
         if (!actual.SetEquals(expected.Keys))
-            throw new InvalidDataException("Prepared file inventory changed. Run ./package.sh again.");
+            throw new InvalidDataException("Prepared file inventory changed. Run ./prepare.sh again.");
         foreach (var path in actual)
         {
             var hash = Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(Path.Combine(workspace, path))));
             if (hash != expected[path])
-                throw new InvalidDataException($"Prepared file changed: {path}. Run ./package.sh again.");
+                throw new InvalidDataException($"Prepared file changed: {path}. Run ./prepare.sh again.");
         }
         var catalog = ListingFiles.ReadLanguages();
         var listings = ListingFiles.ReadListings(workspace, catalog);
@@ -61,7 +63,9 @@ internal sealed class PreparedRelease
         var fingerprint = root.GetProperty("contentFingerprint").GetString()!;
         if (fingerprint.Length != 64 || fingerprint.Any(c => !char.IsAsciiHexDigitLower(c)))
             throw new InvalidDataException("Invalid prepared content fingerprint.");
-        return new PreparedRelease { Workspace = workspace, ItemId = item, ContentFingerprint = fingerprint,
+        if (item == null && settings.RootElement.GetProperty("visibility").GetString() != "private")
+            throw new InvalidDataException("The first release must be prepared with private visibility.");
+        return new PreparedRelease { Workspace = workspace, ItemId = item ?? 0, ContentFingerprint = fingerprint,
             Settings = settings.RootElement.Clone(), Listings = listings };
     }
 }
@@ -101,13 +105,26 @@ internal sealed class Publisher(IWorkshopClient client, string stateDirectory, A
         log($"Verified {PreviewGallery.Files(release).Length} shared preview images in filename order.");
     }
 
-    public int Run(PreparedRelease release, string? language, bool previewsOnly = false)
+    public int Run(PreparedRelease release, string? language, bool previewsOnly = false, string? itemDirectory = null)
     {
         if (previewsOnly && language != null)
             throw new ArgumentException("--previews-only cannot be combined with --language: the gallery is shared.");
         if (language != null && !release.Listings.Any(l => l.Language == language))
             throw new ArgumentException($"No prepared translation for {language}.");
         Directory.CreateDirectory(stateDirectory);
+        if (itemDirectory != null)
+        {
+            // Serialize creation and publication, including direct publisher invocations.
+            using var identityLock = new FileStream(Path.Combine(stateDirectory, "creation.lock"),
+                FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+            var identity = new WorkshopIdentity(itemDirectory, stateDirectory);
+            release = identity.Resolve(release, client, language == null && !previewsOnly, log);
+            var result = Run(release, language, previewsOnly);
+            if (result == 0 && language == null && !previewsOnly) identity.Complete();
+            return result;
+        }
+        if (release.ItemId == 0)
+            throw new InvalidOperationException("Creating an item requires --item-directory outside the prepared workspace.");
         var statePath = Path.Combine(stateDirectory, $"{release.ItemId}-{client.UserId}.json");
         // Also lock direct invocations, independently of the shell workflow lock.
         using var stateLock = new FileStream(statePath + ".lock", FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
@@ -216,12 +233,16 @@ internal sealed class Publisher(IWorkshopClient client, string stateDirectory, A
             new { operation, previous, release.ContentFingerprint });
     }
 
-    private static void AtomicWrite(string path, object value)
+    internal static void AtomicWrite(string path, object value)
     {
         var temp = path + $".{Guid.NewGuid():N}.tmp";
         try
         {
-            File.WriteAllText(temp, JsonSerializer.Serialize(value, JsonOptions) + "\n");
+            using (var stream = new FileStream(temp, FileMode.CreateNew, FileAccess.Write))
+            {
+                stream.Write(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(value, JsonOptions) + "\n"));
+                stream.Flush(flushToDisk: true);
+            }
             File.Move(temp, path, overwrite: true);
         }
         finally { if (File.Exists(temp)) File.Delete(temp); }

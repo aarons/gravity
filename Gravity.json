@@ -2,7 +2,7 @@
   "id": "Gravity",
   "name": "Gravity",
   "author": "Laethos",
-  "description": "Cut loose and hang low. Encounters fall into a pile: choose any 15 to unlock the boss, then fight it or keep exploring.",
+  "description": "Encounters fall into a pile. There are no paths to follow so they can be chosen in any order. After 15 encounters (configurable) the boss is unlocked. Have fun!",
   "version": "1.0.0",
   "has_pck": false,
   "has_dll": true,

@@ -20,7 +20,7 @@ spa/spanish is Castilian Spanish. supported-languages.json defines the mapping.
 Consult git history if useful; current English remains authoritative.
 
 Do not edit English, other locales, review fingerprints, code, or documentation.
-Do not commit, package, publish, or invoke update-localizations.sh. Verify this
+Do not commit, prepare releases, publish, or invoke update-localizations.sh. Verify this
 file's keys exactly match English. Other locales may still be stale; the caller
 validates this file and records its fingerprints after your successful run.
 Preserve correct text unchanged when no edit is needed. Summarize changes and

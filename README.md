@@ -1,7 +1,9 @@
 # Gravity
 
-A gameplay mod for Slay the Spire 2. The map loses its paths and its encounters
-fall into a compact pile around the starting Ancient.
+A gameplay mod for Slay the Spire 2.
+
+Encounters fall into a pile. There are no paths to follow so they can be chosen
+in any order. After 15 encounters (configurable) the boss is unlocked. Have fun!
 
 ## How it works
 
@@ -228,10 +230,10 @@ In-game acceptance checks:
 | `./install.sh --uninstall` | Remove this mod's local development directory. |
 | `./update-localizations.sh` | Create/review stale game and Workshop translations using Codex. |
 | `./update-localizations.sh --check` | Check structure and review freshness without edits or model calls. |
-| `./package.sh` | Update translations, validate, build and freeze a release; no install or upload. |
-| `./package.sh --skip-localizations` | Skip model calls; still require valid, reviewed translations. |
+| `./prepare.sh` | Update translations, validate, build and freeze a release; no install or upload. |
+| `./prepare.sh --skip-localizations` | Skip model calls; still require valid, reviewed translations. |
 | `./release.sh --dry-run` | Verify and describe the prepared release offline. |
-| `./release.sh` | Publish the prepared content and all supported listing languages. |
+| `./release.sh` | Create or update the Workshop item from the prepared release; first release is private. |
 
 Restart the game after installing. A plain `dotnet build` only builds; installation
 is explicitly enabled by `install.sh`. For a nonstandard Steam library:
@@ -241,7 +243,7 @@ is explicitly enabled by `install.sh`. For a nonstandard Steam library:
 ```
 
 `Sts2DataDir` and `ModsPath` are also overridable MSBuild properties. Use the same
-path overrides with packaging if needed. Uninstall removes this mod's entire local
+path overrides with preparation if needed. Uninstall removes this mod's entire local
 folder, including files you put there; keep source files in this checkout.
 
 ## Localization
@@ -266,7 +268,7 @@ edits invalidate that file. Completed reviews survive interruption. Review the
 diff and check fonts/layout in-game before release. Hashes establish review
 freshness, not translation quality. Prompt-policy changes require `--force`.
 
-Local installation only validates English. Packaging requires all 14 locales in
+Local installation only validates English. Preparation requires all 14 locales in
 both groups with current review receipts. Changing the supported language set
 also requires updating the expected count in `scripts/validate_localization.py`
 and `tools/WorkshopLocalization/ListingFiles.cs` and their tests.
@@ -275,55 +277,62 @@ Shared changelogs are maintained separately in `workshop/settings.json`:
 version, English text, separator, matching Simplified Chinese text. See `AGENTS.md`.
 The updater does not translate changelogs.
 
-## First Workshop upload
+## Workshop setup
 
-1. Extract the complete [official Mega Crit uploader](https://github.com/megacrit/sts2-mod-uploader)
-   for macOS ARM64 into `references/ModUploader-osx-arm64/`. Keep its native library
-   and support files beside the executable. On Intel macOS use a matching native
-   binary and adapt the inherited path if needed; that variant is untested here.
-2. Add your own `workshop/image.png`, less than 1 MB. No borrowed artwork or live
-   Workshop ID is included. Optionally add gallery images in `workshop/previews/`
-   (PNG/JPG/GIF, each less than 1 MB, ordered by filename).
-3. Run `./prepare-first-upload.sh` (accepts MSBuild path overrides). It builds into
-   `workshop/first-upload/` with English listing text and **private** visibility.
-   Review that workspace, then run the exact official upload command it prints.
-4. After the uploader succeeds, copy `workshop/first-upload/mod_id.txt` to
-   `workshop/mod_id.txt` using the printed command. Commit the latter; it identifies
-   this mod's item for every subsequent release.
-5. Set the intended visibility, tags and dependencies in `workshop/settings.json`,
-   update the listing/changelog, and follow the normal release steps below.
+Add your own `workshop/image.png`, less than 1 MB. Optionally add gallery images
+in `workshop/previews/` (PNG/JPG/GIF, each less than 1 MB, ordered by filename).
+Set tags, dependencies, and release visibility in `workshop/settings.json`.
 
-First upload is a one-time bootstrap using the official uploader, independent of
-our frozen-release publisher. It sends English content only; the next full release
-adds all listing languages and the preview gallery. No helper uploads automatically
-during setup or preparation. Creating a second item is never part of `release.sh`.
+Use the same prepare/release commands for the first upload and every update.
+`./prepare.sh` can be rerun at any stage: it validates translations, builds, and
+replaces the prepared snapshot without uploading. If the native Steam library is
+missing, it downloads the checksum-verified
+[official Mega Crit uploader v0.2.0 bundle](https://github.com/megacrit/sts2-mod-uploader/releases/tag/v0.2.0)
+into `references/ModUploader-osx-arm64/`. Only its Steam runtime is used by our
+publisher. This inherited runtime setup targets macOS ARM64; Intel is untested.
 
-The preparation helper refuses to overwrite an existing first-upload workspace.
-If uploading fails, inspect/retry that same workspace and preserve any returned
-`mod_id.txt`. Check Workshop before retrying after a timeout. If you need to
-rebuild *before any upload*, remove `workshop/first-upload/` and prepare again.
+On the first full `./release.sh`, the publisher creates the Workshop item and
+saves its ID automatically to `workshop/mod_id.txt` before uploading the prepared
+content, all listing languages, and gallery. **The first release is private**,
+even if settings specify public. Commit `workshop/mod_id.txt` and preserve it for
+all subsequent releases. Once the first full release succeeds, the next preparation
+uses the visibility in settings. To go public, set `"visibility": "public"`, prepare,
+review the dry run, and release again. Releasing the same initial snapshot stays private.
+
+Retries reuse the saved item and leave the prepared files unchanged. Repreparing
+an incomplete first release also keeps it private. If Steam requires its Workshop
+agreement, the ID is saved before stopping; accept the agreement and retry.
+If creation times out before returning an ID, the publisher records the uncertain
+attempt and stops subsequent creation attempts to avoid duplicates. Check your
+Workshop items and save the created item's ID in `workshop/mod_id.txt`, then retry.
+Only if Steam confirms no item exists should you remove
+`workshop/.release-state/creation.json` and retry creation.
+
+If you used the old first-upload flow, preparation automatically recovers
+`workshop/first-upload/mod_id.txt` when present. An unused first-upload workspace
+can remain in place; it is no longer needed. Conflicting saved IDs stop the workflow.
 
 ## Prepare and publish a release
 
 ```sh
 # First update the root mod JSON's version and workshop/settings.json's changeNote.
 ./install.sh                    # Test in-game, initially in English.
-./package.sh                    # Runs localization updates and freezes the release.
+./prepare.sh                    # Runs localization updates and freezes the release.
 ./release.sh --dry-run          # Review frozen inputs offline.
 ./release.sh                    # Explicit live publication, with Steam running.
 ```
 
 Review `workshop/workshop.json`, `workshop/content/`, and
 `workshop/prepared/localizations/`. The generated English manifest comes from the
-English listing plus shared settings; edit those sources and package again.
+English listing plus shared settings; edit those sources and prepare again.
 
-Packaging snapshots the DLL, metadata, images, listing translations, publisher and
+Preparation snapshots the DLL, metadata, images, listing translations, publisher and
 native Steam library, and hashes source/prepared files. It archives distinct builds
-as versioned ZIPs under `archive/`. Failed builds preserve the previous package.
-Release never builds, translates, or packages; changed inputs or review copies
-require a new package. Package and release use a checkout-local lock.
+as versioned ZIPs under `archive/`. Failed builds preserve the previous prepared release.
+Release never builds, translates, or prepares; changed inputs or review copies
+require a new prepared release. Prepare and release use a checkout-local lock.
 
-Steam must be running and signed in to the item's owning account. The publisher
+Steam must be running and signed in to the publishing account (the item’s owner for updates). The publisher
 checks ownership, backs up returned listing metadata, verifies localized updates
 by reading them back, and keeps retry receipts in `workshop/.release-state/`.
 Preserve those receipts for retries. Previously verified live content/listings

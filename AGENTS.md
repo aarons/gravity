@@ -9,11 +9,11 @@
   `dotnet build -c Release` builds without installing. Honor game-path overrides.
 - Use `./update-localizations.sh` for the dedicated translation pass. Commit its
   review fingerprints with translations; do not manufacture current review records.
-- Use `./package.sh` to prepare a release and `./release.sh --dry-run` to inspect it.
+- Use `./prepare.sh` to prepare a release and `./release.sh --dry-run` to inspect it.
   `./release.sh` is live publication; use it when publishing is requested. Preparation
   alone is not a publication request. Never edit prepared files or rebuild in release.
-- A new item needs the one-time official uploader workflow documented in README.md.
-  Preserve `workshop/mod_id.txt`; never reuse an ID from another mod.
+- Release creates new Workshop items privately and saves their IDs automatically.
+  Preserve `workshop/mod_id.txt` and creation receipts; never reuse an ID from another mod.
 - Update the root mod JSON's version and the changelog together for releases.
 - When changing tooling, run `python3 -m unittest discover -s tests -v`. These tests
   use fake translation sessions and Steam clients. Test mod behavior in-game as needed.

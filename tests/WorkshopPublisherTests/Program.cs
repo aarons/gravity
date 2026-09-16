@@ -3,6 +3,64 @@ using WorkshopLocalization;
 
 var tests = new (string Name, Action Test)[]
 {
+    ("first release creates privately, saves ID and retries without changing snapshot", () => WithFixture((release, steam, publisher, state) =>
+    {
+        release = FirstRelease(release);
+        var settings = release.Settings.GetRawText();
+        steam.FailLanguage = "japanese";
+        Assert(publisher.Run(release, null, itemDirectory: state) == 1);
+        Assert(File.ReadAllText(Path.Combine(state, "mod_id.txt")).Trim() == "123456789");
+        Assert(!File.ReadAllText(Path.Combine(state, "creation.json")).Contains("\"completed\": true"));
+        Assert(steam.Created == 1 && steam.Visibility == "private");
+        Assert(release.ItemId == 0 && release.Settings.GetRawText() == settings);
+        steam.FailLanguage = null;
+        Assert(publisher.Run(release, null, itemDirectory: state) == 0);
+        Assert(steam.Created == 1 && steam.ContentUploads == 1);
+        Assert(File.ReadAllText(Path.Combine(state, "creation.json")).Contains("\"completed\": true"));
+        File.Delete(Path.Combine(state, "mod_id.txt"));
+        Assert(publisher.Run(release, null, itemDirectory: state) == 0);
+        Assert(File.Exists(Path.Combine(state, "mod_id.txt")) && steam.Created == 1);
+    })),
+    ("ambiguous creation cannot create duplicates and can recover a known ID", () => WithFixture((release, steam, publisher, state) =>
+    {
+        release = FirstRelease(release);
+        steam.LoseCreateResponse = true;
+        Throws<TimeoutException>(() => publisher.Run(release, null, itemDirectory: state));
+        Throws<InvalidOperationException>(() => publisher.Run(release, null, itemDirectory: state));
+        Assert(steam.Created == 1 && steam.ContentUploads == 0);
+        File.WriteAllText(Path.Combine(state, "mod_id.txt"), "123456789\n");
+        Assert(publisher.Run(release, null, itemDirectory: state) == 0);
+        Assert(steam.Created == 1 && steam.Visibility == "private");
+    })),
+    ("legal agreement preserves created ID before stopping", () => WithFixture((release, steam, publisher, state) =>
+    {
+        release = FirstRelease(release);
+        steam.NeedsLegalAgreement = true;
+        Throws<InvalidOperationException>(() => publisher.Run(release, null, itemDirectory: state));
+        Assert(File.Exists(Path.Combine(state, "mod_id.txt")) && steam.ContentUploads == 0);
+        Assert(publisher.Run(release, null, itemDirectory: state) == 0);
+        Assert(steam.Created == 1);
+    })),
+    ("first release rejects partial modes and public visibility before creation", () => WithFixture((release, steam, publisher, state) =>
+    {
+        Throws<InvalidDataException>(() => publisher.Run(release with { ItemId = 0 }, null, itemDirectory: state));
+        release = FirstRelease(release);
+        Throws<InvalidOperationException>(() => publisher.Run(release, "japanese", itemDirectory: state));
+        Throws<InvalidOperationException>(() => publisher.Run(release, null, previewsOnly: true, itemDirectory: state));
+        Assert(steam.Created == 0 && steam.Calls.Count == 0);
+    })),
+    ("identity mismatch and account switch cannot redirect first release", () => WithFixture((release, steam, publisher, state) =>
+    {
+        release = FirstRelease(release);
+        Assert(publisher.Run(release, null, itemDirectory: state) == 0);
+        steam.Calls.Clear();
+        File.WriteAllText(Path.Combine(state, "mod_id.txt"), "999\n");
+        Throws<InvalidDataException>(() => publisher.Run(release, null, itemDirectory: state));
+        File.WriteAllText(Path.Combine(state, "mod_id.txt"), "123456789\n");
+        steam.Account = 999;
+        Throws<InvalidOperationException>(() => publisher.Run(release, null, itemDirectory: state));
+        Assert(steam.Calls.Count == 0 && steam.Created == 1);
+    })),
     ("preview plan corrects old order and preserves video slots", () =>
     {
         Preview[] previous = [new("01-a.jpg", 0), new("video", 1), new("02-a.png", 0), new("01-b.jpg", 0), new("02-b.png", 0)];
@@ -49,10 +107,10 @@ var tests = new (string Name, Action Test)[]
         Assert(publisher.Run(release, null) == 0);
         var first = steam.Calls.ToArray();
         Assert(steam.ContentUploads == 1);
-        Assert(first.Count(c => c.StartsWith("listing:")) == 3);
+        Assert(first.Count(c => c.StartsWith("listing:")) == 2);
         Assert(publisher.Run(release, null) == 0);
         Assert(steam.Calls.SequenceEqual(first));
-        Assert(Directory.GetFiles(Path.Combine(state, "backups"), "*.json", SearchOption.AllDirectories).Length == 5);
+        Assert(Directory.GetFiles(Path.Combine(state, "backups"), "*.json", SearchOption.AllDirectories).Length == 4);
     })),
     ("partial listing failure continues and targeted retry excludes content", () => WithFixture((release, steam, publisher, state) =>
     {
@@ -149,6 +207,12 @@ static void Assert(bool condition)
     if (!condition) throw new Exception("Assertion failed");
 }
 
+static PreparedRelease FirstRelease(PreparedRelease release) => release with
+{
+    ItemId = 0,
+    Settings = JsonSerializer.SerializeToElement(new { visibility = "private", dependencies = new[] { 42UL } })
+};
+
 static void Throws<T>(Action action) where T : Exception
 {
     try { action(); }
@@ -179,7 +243,8 @@ static void WithFixture(Action<PreparedRelease, FakeSteam, Publisher, string> te
 
 sealed class FakeSteam : IWorkshopClient
 {
-    public ulong UserId => 123;
+    public ulong Account = 123;
+    public ulong UserId => Account;
     public ulong Owner = 123;
     public uint AppId = 2868840;
     public Dictionary<string, (string Title, string Description)> Text = new()
@@ -192,6 +257,15 @@ sealed class FakeSteam : IWorkshopClient
     public bool IgnorePreviews, FailPreviewDownload;
     public string? FailLanguage, IgnoreLanguage;
     public bool LoseContentResponse, FailDependencies, OverwriteEnglish;
+    public bool LoseCreateResponse, NeedsLegalAgreement;
+    public int Created;
+    public string? Visibility;
+    public CreatedItem CreateItem()
+    {
+        Created++;
+        if (LoseCreateResponse) throw new TimeoutException("Simulated lost creation response");
+        return new CreatedItem(123456789, NeedsLegalAgreement);
+    }
     public RemoteItem Read(ulong itemId, string language)
     {
         var text = Text.GetValueOrDefault(language, Text["english"]);
@@ -200,6 +274,9 @@ sealed class FakeSteam : IWorkshopClient
     public void UploadContent(PreparedRelease release, RemoteItem previous)
     {
         Calls.Add("content"); ContentUploads++; Metadata = release.Marker;
+        Visibility = release.Settings.GetProperty("visibility").GetString();
+        var english = release.Listings.Single(listing => listing.Language == "english");
+        Text["english"] = (english.Title, english.Description);
         SetPreviews(release);
         if (LoseContentResponse) throw new TimeoutException("Simulated committed upload with lost response");
     }

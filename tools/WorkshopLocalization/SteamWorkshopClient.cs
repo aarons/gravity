@@ -72,6 +72,16 @@ internal sealed class SteamWorkshopClient : IWorkshopClient
             throw new InvalidOperationException($"Steam {operation} failed: {result}.");
     }
 
+    public CreatedItem CreateItem()
+    {
+        // https://partner.steamgames.com/doc/api/ISteamUGC#CreateItem
+        var result = Wait<CreateItemResult_t>(SteamUGC.CreateItem(AppId,
+            EWorkshopFileType.k_EWorkshopFileTypeCommunity), "create Workshop item");
+        Check(result.m_eResult, "create Workshop item");
+        return new CreatedItem(result.m_nPublishedFileId.m_PublishedFileId,
+            result.m_bUserNeedsToAcceptWorkshopLegalAgreement);
+    }
+
     public RemoteItem Read(ulong itemId, string language)
     {
         var handle = SteamUGC.CreateQueryUGCDetailsRequest([new PublishedFileId_t(itemId)], 1);
@@ -144,6 +154,12 @@ internal sealed class SteamWorkshopClient : IWorkshopClient
     {
         var settings = release.Settings;
         var handle = Start(release.ItemId);
+        // Newly created items have no listing yet. Publish English with the content so
+        // the first update is complete; localized listings are reconciled afterward.
+        var english = release.Listings.Single(listing => listing.Language == "english");
+        Require(SteamUGC.SetItemUpdateLanguage(handle, "english"), "content listing language");
+        Require(SteamUGC.SetItemTitle(handle, english.Title), "content listing title");
+        Require(SteamUGC.SetItemDescription(handle, english.Description), "content listing description");
         var visibility = settings.GetProperty("visibility").GetString() switch
         {
             "public" => ERemoteStoragePublishedFileVisibility.k_ERemoteStoragePublishedFileVisibilityPublic,

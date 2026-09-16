@@ -24,7 +24,7 @@ class WorkshopReleaseTests(unittest.TestCase):
         for name in ("scripts", "src", "localization", "workshop/localizations"):
             shutil.copytree(ROOT / name, self.root / name, ignore=shutil.ignore_patterns("__pycache__"))
         for name in ("supported-languages.json", "Gravity.json",
-                     "Gravity.csproj", "Sts2PathDiscovery.props", "install.sh", "package.sh", "release.sh",
+                     "Gravity.csproj", "Sts2PathDiscovery.props", "install.sh", "prepare.sh", "release.sh",
                      "workshop/settings.json"):
             shutil.copy2(ROOT / name, self.root / name)
         # Synthetic data is confined to temporary test workspaces.
@@ -64,13 +64,13 @@ class WorkshopReleaseTests(unittest.TestCase):
             (output / "WorkshopLocalization.dll").write_bytes(b"fake publisher")
         return subprocess.CompletedProcess(command, 0)
 
-    def package(self, build=None):
+    def prepare(self, build=None):
         with patch.object(workflow.subprocess, "run", side_effect=build or self.build):
-            workflow.package(self.root, [])
+            workflow.prepare(self.root, [])
 
     def test_english_review_and_all_translations_are_frozen_without_changing_sources(self):
         before = workflow.inputs(self.root)
-        self.package()
+        self.prepare()
         self.assertEqual(before, workflow.inputs(self.root))
         prepared = workflow.check(self.root)
         manifest = workflow.read_json(self.root / "workshop/workshop.json")
@@ -82,11 +82,85 @@ class WorkshopReleaseTests(unittest.TestCase):
         self.assertEqual(len(self.calls), 2)
         self.assertIn("-p:InstallMod=false", self.calls[0])
         self.assertEqual(len(list((self.root / "archive").glob("*.zip"))), 1)
-        self.package()
+
+    def test_prepare_before_first_upload_is_repeatable_private_and_complete(self):
+        (self.root / "workshop/mod_id.txt").unlink()
+        settings = workflow.read_json(self.root / "workshop/settings.json")
+        settings["visibility"] = "public"
+        workflow.write_json(self.root / "workshop/settings.json", settings)
+        self.prepare()
+        prepared = workflow.check(self.root)
+        before = workflow.hashes(prepared)
+        self.assertIsNone(workflow.read_json(prepared / "release-manifest.json")["publishedFileId"])
+        self.assertEqual(workflow.read_json(prepared / "workshop.json")["visibility"], "private")
+        self.assertEqual(workflow.read_json(self.root / "workshop/settings.json")["visibility"], "public")
+        self.assertEqual(len(list((prepared / "localizations").glob("*.json"))), 14)
+        self.assertFalse((self.root / "workshop/mod_id.txt").exists())
+        self.prepare()
+        self.assertEqual(before, workflow.hashes(prepared))
         self.assertEqual(len(list((self.root / "archive").glob("*.zip"))), 1)
 
-    def test_stale_translations_fail_before_building_and_preserve_previous_package(self):
-        self.package()
+        # Creation changes only persistent identity, not the frozen snapshot or its source hashes.
+        state = self.root / "workshop/.release-state"
+        state.mkdir()
+        receipt = {"version": 1, "owner": "123", "itemId": "123456789", "completed": False}
+        workflow.write_json(state / "creation.json", receipt)
+        (self.root / "workshop/mod_id.txt").write_text("123456789\n")
+        workflow.check(self.root)
+        self.assertEqual(before, workflow.hashes(prepared))
+        self.prepare()
+        self.assertEqual(workflow.read_json(prepared / "workshop.json")["visibility"], "private")
+        receipt["completed"] = True
+        workflow.write_json(state / "creation.json", receipt)
+        self.prepare()
+        self.assertEqual(workflow.read_json(prepared / "workshop.json")["visibility"], "public")
+
+    def test_prepare_recovers_legacy_id_and_rejects_conflicts(self):
+        (self.root / "workshop/mod_id.txt").unlink()
+        legacy = self.root / "workshop/first-upload"
+        legacy.mkdir()
+        (legacy / "mod_id.txt").write_text("123456789\n")
+        self.prepare()
+        self.assertEqual((self.root / "workshop/mod_id.txt").read_text(), "123456789\n")
+        (legacy / "mod_id.txt").write_text("987654321\n")
+        with self.assertRaisesRegex(ValueError, "IDs disagree"):
+            self.prepare()
+
+    def test_prepare_obtains_missing_runtime_before_freezing_inputs(self):
+        self.native.unlink()
+        def download(root):
+            self.native.write_bytes(b"downloaded native runtime")
+        with patch.object(workflow, "ensure_uploader", side_effect=download) as fetch:
+            self.prepare()
+        fetch.assert_called_once_with(self.root)
+        workflow.check(self.root)
+
+    def test_first_release_dry_run_uses_real_publisher_without_steam_or_writes(self):
+        (self.root / "workshop/mod_id.txt").unlink()
+        # Keep a real subprocess handle, since prepare's build calls are mocked.
+        real_run = subprocess.run
+        def real_build(command, **kwargs):
+            if "WorkshopLocalization.csproj" not in command[2]:
+                return self.build(command, **kwargs)
+            command[2] = str(ROOT / "tools/WorkshopLocalization/WorkshopLocalization.csproj")
+            return real_run(command, **kwargs, capture_output=True, text=True)
+        self.prepare(real_build)
+        before = workflow.hashes(self.root / "workshop/prepared")
+        for extra, expected in (([], 0), (["--language", "japanese"], 1), (["--previews-only"], 1)):
+            result = real_run(["bash", str(self.root / "release.sh"), "--dry-run", *extra],
+                              capture_output=True, text=True)
+            self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
+            if expected == 0:
+                plan = json.loads(result.stdout)
+                self.assertIsNone(plan["publishedFileId"])
+                self.assertEqual(plan["visibility"], "private")
+                self.assertEqual(len(plan["updates"]), 14)
+        self.assertFalse((self.root / "workshop/mod_id.txt").exists())
+        self.assertFalse((self.root / "workshop/.release-state").exists())
+        self.assertEqual(before, workflow.hashes(self.root / "workshop/prepared"))
+
+    def test_stale_translations_fail_before_building_and_preserve_previous_snapshot(self):
+        self.prepare()
         before = workflow.hashes(self.root / "workshop/prepared")
         path = self.root / "workshop/localizations/english.json"
         english = workflow.read_json(path)
@@ -94,28 +168,28 @@ class WorkshopReleaseTests(unittest.TestCase):
         workflow.write_json(path, english)
         self.calls.clear()
         with self.assertRaisesRegex(ValueError, "Translations need review"):
-            self.package()
+            self.prepare()
         self.assertEqual(self.calls, [])
         self.assertEqual(before, workflow.hashes(self.root / "workshop/prepared"))
 
     def test_build_failure_or_source_race_preserves_previous_output(self):
-        self.package()
+        self.prepare()
         before = workflow.hashes(self.root / "workshop/prepared")
         def fail(command, **kwargs):
             raise subprocess.CalledProcessError(1, command)
         with self.assertRaises(subprocess.CalledProcessError):
-            self.package(fail)
+            self.prepare(fail)
         self.assertEqual(before, workflow.hashes(self.root / "workshop/prepared"))
         def change(command, **kwargs):
             result = self.build(command, **kwargs)
             (self.root / "src/MainFile.cs").write_text("changed while building")
             return result
-        with self.assertRaisesRegex(ValueError, "changed during packaging"):
-            self.package(change)
+        with self.assertRaisesRegex(ValueError, "changed during preparation"):
+            self.prepare(change)
         self.assertEqual(before, workflow.hashes(self.root / "workshop/prepared"))
 
     def test_release_rejects_changed_sources_prepared_files_and_review_copy(self):
-        self.package()
+        self.prepare()
         for name in ("src/MainFile.cs", "workshop/localizations/japanese.json",
                      "workshop/settings.json", "workshop/prepared/localizations/japanese.json",
                      "workshop/prepared/content/Gravity.dll", "workshop/workshop.json",
@@ -131,7 +205,7 @@ class WorkshopReleaseTests(unittest.TestCase):
         workflow.check(self.root)
 
     def test_release_only_launches_prebuilt_publisher_and_forwards_language(self):
-        self.package()
+        self.prepare()
         with patch.object(workflow.subprocess, "run", return_value=subprocess.CompletedProcess([], 1)) as run:
             status = workflow.release(self.root, argparse.Namespace(language="japanese", dry_run=False, previews_only=False))
             self.assertEqual(status, 1)
@@ -140,16 +214,16 @@ class WorkshopReleaseTests(unittest.TestCase):
             self.assertTrue(command[1].endswith("prepared/publisher/WorkshopLocalization.dll"))
             self.assertIn("publish", command)
             self.assertEqual(command[-2:], ["--language", "japanese"])
-            self.assertFalse(any(word in command for word in ("run", "build", "package", "update-localizations.sh")))
+            self.assertFalse(any(word in command for word in ("run", "build", "prepare", "update-localizations.sh")))
 
     def test_preview_only_release_forwards_option_without_building(self):
-        self.package()
+        self.prepare()
         with patch.object(workflow.subprocess, "run", return_value=subprocess.CompletedProcess([], 0)) as run:
             workflow.release(self.root, argparse.Namespace(language=None, dry_run=True, previews_only=True))
             self.assertEqual(run.call_args.args[0][-2:], ["--dry-run", "--previews-only"])
 
     def test_release_shell_dry_run_never_builds_or_invokes_updater(self):
-        self.package()
+        self.prepare()
         binaries = self.root / "fake-bin"
         binaries.mkdir()
         log = self.root / "calls.json"
@@ -166,7 +240,7 @@ class WorkshopReleaseTests(unittest.TestCase):
         self.assertEqual(args[-3:], ["--language", "japanese", "--dry-run"])
 
     def test_listing_only_changes_do_not_change_shared_content_fingerprint(self):
-        self.package()
+        self.prepare()
         before = workflow.read_json(self.root / "workshop/prepared/release-manifest.json")["contentFingerprint"]
         path = self.root / "workshop/localizations/japanese.json"
         listing = workflow.read_json(path)
@@ -177,13 +251,13 @@ class WorkshopReleaseTests(unittest.TestCase):
         records = workflow.read_json(records_path)
         records["translations"]["workshop/localizations/japanese.json"]["translation_sha256"] = fingerprint(listing)
         workflow.write_json(records_path, records)
-        self.package()
+        self.prepare()
         after = workflow.read_json(self.root / "workshop/prepared/release-manifest.json")["contentFingerprint"]
         self.assertEqual(before, after)
 
-    def test_lock_blocks_concurrent_package_and_release(self):
+    def test_lock_blocks_concurrent_prepare_and_release(self):
         with workflow.workflow_lock(self.root):
-            with self.assertRaisesRegex(ValueError, "Another package or release"):
+            with self.assertRaisesRegex(ValueError, "Another prepare or release"):
                 with workflow.workflow_lock(self.root):
                     self.fail("concurrent workflow should not enter")
 

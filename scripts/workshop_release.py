@@ -15,6 +15,7 @@ from zipfile import BadZipFile, ZIP_DEFLATED, ZipFile
 
 from update_localizations import read_sources, read_state, review_reason, targets
 from validate_localization import supported_languages, unique_keys, validate
+from steam_runtime import ensure_uploader
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -44,7 +45,7 @@ def workflow_lock(root):
         try:
             fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
-            raise ValueError("Another package or release is running in this checkout") from None
+            raise ValueError("Another prepare or release is running in this checkout") from None
         yield
 
 
@@ -53,12 +54,50 @@ def inputs(root):
     for pattern in ("*.csproj", "*.props", "*.sh", "scripts/prompts/*.md", "NuGet.Config", "global.json", "supported-languages.json",
                     "localization-review.json", "Gravity.json", "src/**/*.cs",
                     "localization/*.json", "scripts/*.py", "workshop/settings.json",
-                    "workshop/mod_id.txt", "workshop/image.png", "workshop/localizations/*.json",
+                    "workshop/image.png", "workshop/localizations/*.json",
                     "tools/WorkshopLocalization/*.cs", "tools/WorkshopLocalization/*.csproj",
                     "tools/WorkshopLocalization/vendor/*", "references/ModUploader-osx-arm64/libsteam_api.dylib"):
         paths.update(root.glob(pattern))
     paths.update(p for p in (root / "workshop/previews").glob("*") if p.name != ".DS_Store")
     return {p.relative_to(root).as_posix(): digest(p.read_bytes()) for p in sorted(paths) if p.is_file()}
+
+
+def item_id(path):
+    if not path.exists():
+        return None
+    value = path.read_text().strip()
+    if not re.fullmatch(r"[0-9]+", value) or not 0 < int(value) < 2**64:
+        raise ValueError(f"{path}: expected a nonzero uint64 Workshop item ID")
+    return str(int(value))
+
+
+def identity(root, recover=False):
+    workspace = root / "workshop"
+    item = item_id(workspace / "mod_id.txt")
+    legacy = item_id(workspace / "first-upload/mod_id.txt")
+    receipt_path = workspace / ".release-state/creation.json"
+    receipt = read_json(receipt_path) if receipt_path.exists() else None
+    if receipt is not None:
+        if (not isinstance(receipt, dict) or receipt.get("version") != 1
+                or type(receipt.get("completed")) is not bool
+                or not isinstance(receipt.get("owner"), str)
+                or not re.fullmatch(r"[0-9]+", receipt["owner"])
+                or not 0 < int(receipt["owner"]) < 2**64
+                or (receipt["completed"] and receipt.get("itemId") is None)):
+            raise ValueError("Invalid Workshop creation receipt")
+    saved = receipt.get("itemId") if receipt is not None else None
+    if saved is not None and (not isinstance(saved, str) or not re.fullmatch(r"[0-9]+", saved)
+                              or not 0 < int(saved) < 2**64):
+        raise ValueError("Invalid saved Workshop item ID")
+    ids = {value for value in (item, legacy, saved) if value is not None}
+    if len(ids) > 1:
+        raise ValueError("Workshop item IDs disagree; preserve them and resolve the mismatch before releasing")
+    known = next(iter(ids), None)
+    if recover and item is None and known is not None:
+        with (workspace / "mod_id.txt").open("x") as stream:
+            stream.write(known + "\n")
+        print(f"Recovered Workshop item ID {known} into workshop/mod_id.txt")
+    return known, receipt
 
 
 def preflight(root):
@@ -92,11 +131,9 @@ def preflight(root):
         raise ValueError("settings.json: unsupported content descriptor")
     if any(type(d) is not int or not 0 < d < 2**64 for d in settings.get("dependencies", [])):
         raise ValueError("settings.json: dependencies must be nonzero uint64 IDs")
-    if not (root / "workshop/mod_id.txt").is_file():
-        raise ValueError("No Workshop item yet. Follow README.md: First Workshop upload, then package again.")
-    item = (root / "workshop/mod_id.txt").read_text().strip()
-    if not re.fullmatch(r"[0-9]+", item) or not 0 < int(item) < 2**64:
-        raise ValueError("workshop/mod_id.txt must identify the existing Workshop item")
+    item, receipt = identity(root, recover=True)
+    if item is None or (receipt and not receipt["completed"]):
+        settings["visibility"] = "private"
     images = [root / "workshop/image.png"]
     for path in (root / "workshop/previews").glob("*"):
         if path.name == ".DS_Store":
@@ -106,7 +143,7 @@ def preflight(root):
         images.append(path)
     for path in images:
         if not path.is_file():
-            raise ValueError(f"Add your Workshop image before packaging: {path}")
+            raise ValueError(f"Add your Workshop image before preparation: {path}")
         if not 16 <= path.stat().st_size < 1_000_000:
             raise ValueError(f"Image must be at least 16 bytes and less than 1 MB: {path}")
     return {**sources["workshop"], **settings}, item
@@ -143,16 +180,19 @@ def archive(root, content):
         except BaseException:
             path.unlink()
             raise
-        print(f"Archived package: {path}", flush=True)
+        print(f"Archived release: {path}", flush=True)
         return
 
 
-def package(root, build_args):
+def prepare(root, build_args):
     workspace = root / "workshop"
     manifest, item = preflight(root)
+    native = root / "references/ModUploader-osx-arm64/libsteam_api.dylib"
+    if not native.is_file():
+        ensure_uploader(root)
     before = inputs(root)
     # Use one filesystem so promotion and rollback are directory renames.
-    with tempfile.TemporaryDirectory(prefix=".package-", dir=workspace) as temp:
+    with tempfile.TemporaryDirectory(prefix=".prepare-", dir=workspace) as temp:
         temporary = Path(temp)
         build = temporary / "build"
         prepared = temporary / "prepared"
@@ -168,21 +208,22 @@ def package(root, build_args):
         shutil.copy2(root / "references/ModUploader-osx-arm64/libsteam_api.dylib", prepared / "publisher")
         (prepared / "publisher/steam_appid.txt").write_text(f"{APP_ID}\n")
         write_json(prepared / "workshop.json", manifest)
-        (prepared / "mod_id.txt").write_text(item + "\n")
+        if item is not None:
+            (prepared / "mod_id.txt").write_text(item + "\n")
         shutil.copytree(workspace / "localizations", prepared / "localizations", ignore=shutil.ignore_patterns(".DS_Store"))
         shutil.copy2(workspace / "image.png", prepared)
         (prepared / "previews").mkdir()
         for path in (workspace / "previews").glob("*"):
             if path.name != ".DS_Store":
                 shutil.copy2(path, prepared / "previews")
-        if before != inputs(root):
-            raise ValueError("Release inputs changed during packaging; run ./package.sh again")
+        if before != inputs(root) or identity(root)[0] != item:
+            raise ValueError("Release inputs changed during preparation; run ./prepare.sh again")
         files = hashes(prepared)
         shared = {k: v for k, v in files.items() if k.startswith(("content/", "previews/")) or k == "image.png"}
         shared["settings"] = {k: v for k, v in manifest.items() if k not in ("title", "description")}
         content_hash = digest(json.dumps(shared, sort_keys=True, ensure_ascii=False).encode())
         write_json(prepared / "release-manifest.json", {
-            "version": 1, "appId": APP_ID, "publishedFileId": item,
+            "version": 2, "appId": APP_ID, "publishedFileId": item,
             "contentFingerprint": content_hash, "files": files, "inputs": before,
         })
         (temporary / ".prepared-manifest.sha256").write_text(digest((prepared / "release-manifest.json").read_bytes()) + "\n")
@@ -206,35 +247,39 @@ def package(root, build_args):
             for name in reversed(saved):
                 (temporary / f"old-{name}").rename(workspace / name)
             raise
-    print("Package ready: workshop/workshop.json (English), workshop/content/, and workshop/prepared/.")
+    print("Preparation ready: workshop/workshop.json (English), workshop/content/, and workshop/prepared/.")
     print("Review the English manifest and prepared/localizations/. ./release.sh --dry-run checks the snapshot offline.")
-    print("Packaging does not install or publish anything.")
+    print("Preparation does not install or publish anything.")
 
 
 def check(root):
     workspace = root / "workshop"
     prepared = workspace / "prepared"
     if digest((prepared / "release-manifest.json").read_bytes()) != (workspace / ".prepared-manifest.sha256").read_text().strip():
-        raise ValueError("Prepared release manifest changed; run ./package.sh again")
+        raise ValueError("Prepared release manifest changed; run ./prepare.sh again")
     manifest = read_json(prepared / "release-manifest.json")
-    if manifest.get("version") != 1 or manifest.get("appId") != APP_ID:
-        raise ValueError("Unsupported prepared release; run ./package.sh again")
+    if manifest.get("version") != 2 or manifest.get("appId") != APP_ID:
+        raise ValueError("Unsupported prepared release; run ./prepare.sh again")
+    item, _ = identity(root)
+    if manifest["publishedFileId"] is not None and manifest["publishedFileId"] != item:
+        raise ValueError("Workshop item ID changed after preparation; run ./prepare.sh again")
     if manifest["inputs"] != inputs(root):
-        raise ValueError("Release inputs changed after packaging; run ./package.sh again and review the new package")
+        raise ValueError("Release inputs changed after preparation; run ./prepare.sh again and review the new prepared release")
     actual = hashes(prepared)
     actual.pop("release-manifest.json")
     if actual != manifest["files"]:
-        raise ValueError("Prepared files changed or are missing; run ./package.sh again")
+        raise ValueError("Prepared files changed or are missing; run ./prepare.sh again")
     if hashes(workspace / "content") != hashes(prepared / "content") or (
             (workspace / "workshop.json").read_bytes() != (prepared / "workshop.json").read_bytes()):
-        raise ValueError("The Workshop review copy differs from the snapshot; edit sources and run ./package.sh again")
+        raise ValueError("The Workshop review copy differs from the snapshot; edit sources and run ./prepare.sh again")
     return prepared
 
 
 def release(root, args):
     prepared = check(root)
     command = ["dotnet", str(prepared / "publisher/WorkshopLocalization.dll"), "publish",
-               "--workspace", str(prepared), "--state-directory", str(root / "workshop/.release-state")]
+               "--workspace", str(prepared), "--state-directory", str(root / "workshop/.release-state"),
+               "--item-directory", str(root / "workshop")]
     if args.language:
         command.extend(["--language", args.language])
     if args.dry_run:
@@ -248,7 +293,7 @@ def release(root, args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    commands.add_parser("package").add_argument("build_args", nargs=argparse.REMAINDER)
+    commands.add_parser("prepare").add_argument("build_args", nargs=argparse.REMAINDER)
     publish = commands.add_parser("release")
     selection = publish.add_mutually_exclusive_group()
     selection.add_argument("--language", help="publish only this Steam language, without uploading shared content")
@@ -258,11 +303,11 @@ def main():
     args = parser.parse_args()
     try:
         with workflow_lock(ROOT):
-            if args.command == "package":
+            if args.command == "prepare":
                 build_args = args.build_args
                 if build_args[:1] == ["--"]:
                     build_args = build_args[1:]
-                package(ROOT, build_args)
+                prepare(ROOT, build_args)
             elif args.command == "release":
                 return release(ROOT, args)
             else:

@@ -1,5 +1,7 @@
-"""Scaffold setup and first-upload preparation, with builds mocked unless noted."""
+"""Scaffold setup and Steam runtime download, with builds mocked unless noted."""
 
+import hashlib
+import io
 import json
 from pathlib import Path
 import shutil
@@ -7,11 +9,13 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import urllib.error
+import zipfile
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
-import prepare_first_upload
+import steam_runtime
 import setup_mod
 
 
@@ -39,7 +43,7 @@ class SetupTests(unittest.TestCase):
         listing = json.loads((self.root / "workshop/localizations/english.json").read_text())
         self.assertEqual(listing, {"title": 'Example "Mod"', "description": "A description."})
         for relative in ("install.sh", "src/MainFile.cs", "src/Localization.cs",
-                         "scripts/workshop_release.py", "scripts/prepare_first_upload.py", "ExampleMod.csproj"):
+                         "scripts/workshop_release.py", "ExampleMod.csproj"):
             text = (self.root / relative).read_text()
             self.assertNotIn("MyMod", text)
             self.assertIn("ExampleMod", text)
@@ -62,47 +66,68 @@ class SetupTests(unittest.TestCase):
         self.assertEqual(before, after)
 
 
-class FirstUploadTests(unittest.TestCase):
+class UploaderDownloadTests(unittest.TestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory(prefix="sts2 first upload ")
+        self.temp = tempfile.TemporaryDirectory(prefix="sts2 uploader ")
         self.addCleanup(self.temp.cleanup)
-        self.root = Path(self.temp.name) / "fresh mod"
-        fresh_copy(self.root)
-        self.mod_id = next(self.root.glob("*.csproj")).stem
-        (self.root / "workshop/image.png").write_bytes(b"test image never uploaded" * 2)
-        uploader = self.root / "references/ModUploader-osx-arm64/ModUploader"
-        uploader.parent.mkdir(parents=True)
-        uploader.write_text("This fake executable must never be launched.")
+        self.root = Path(self.temp.name)
+        self.destination = self.root / "references/ModUploader-osx-arm64"
 
-    def build(self, command, **kwargs):
-        self.assertEqual(command[:2], ["dotnet", "build"])
-        self.assertIn("-p:InstallMod=false", command)
-        output = Path(command[command.index("--output") + 1])
-        output.mkdir(parents=True)
-        (output / f"{self.mod_id}.dll").write_bytes(b"fake mod")
-        return subprocess.CompletedProcess(command, 0)
+    def bundle(self, names=None):
+        output = io.BytesIO()
+        with zipfile.ZipFile(output, "w") as archive:
+            for name in names if names is not None else (*steam_runtime.UPLOADER_FILES, "ModUploader.pdb"):
+                archive.writestr(name, f"official {name}")
+        return output.getvalue()
 
-    def test_first_upload_is_private_preparation_only_and_preserves_item_ids(self):
-        with patch.object(prepare_first_upload.subprocess, "run", side_effect=self.build) as run:
-            prepare_first_upload.prepare(self.root, ["-p:ModsPath=/unused"])
-        self.assertEqual(run.call_count, 1)
-        destination = self.root / "workshop/first-upload"
-        self.assertEqual(json.loads((destination / "workshop.json").read_text())["visibility"], "private")
-        self.assertEqual(set(p.name for p in (destination / "content").iterdir()),
-                         {f"{self.mod_id}.dll", f"{self.mod_id}.json"})
-        self.assertFalse((self.root / "workshop/mod_id.txt").exists())
-        (destination / "mod_id.txt").write_text("123456789\n")
-        with self.assertRaisesRegex(ValueError, "already exists"):
-            prepare_first_upload.prepare(self.root, [])
-        self.assertEqual((destination / "mod_id.txt").read_text(), "123456789\n")
+    def download(self, data, digest=None):
+        with patch.object(steam_runtime.urllib.request, "urlopen", return_value=io.BytesIO(data)) as fetch, \
+             patch.object(steam_runtime, "UPLOADER_SHA256", digest or hashlib.sha256(data).hexdigest()):
+            result = steam_runtime.ensure_uploader(self.root)
+        self.assertEqual(fetch.call_args.args[0].full_url, steam_runtime.UPLOADER_URL)
+        return result
 
-    def test_failed_build_leaves_no_first_upload_workspace(self):
-        with patch.object(prepare_first_upload.subprocess, "run",
-                          side_effect=subprocess.CalledProcessError(1, ["dotnet", "build"])):
-            with self.assertRaises(subprocess.CalledProcessError):
-                prepare_first_upload.prepare(self.root, [])
-        self.assertFalse((self.root / "workshop/first-upload").exists())
-        self.assertEqual(list((self.root / "workshop").glob(".first-upload-*")), [])
+    def test_downloads_complete_bundle_and_reuses_it_offline(self):
+        executable = self.download(self.bundle())
+        self.assertTrue(executable.stat().st_mode & 0o100)
+        self.assertEqual((self.destination / "ModUploader.pdb").read_text(), "official ModUploader.pdb")
+        self.assertTrue((self.destination / "template/content/README.md").is_file())
+        with patch.object(steam_runtime.urllib.request, "urlopen") as fetch:
+            self.assertEqual(steam_runtime.ensure_uploader(self.root), executable)
+        fetch.assert_not_called()
+        self.assertEqual(list(self.destination.parent.glob(".uploader-*")), [])
+
+    def test_repairs_incomplete_copy_and_preserves_local_extras(self):
+        self.destination.mkdir(parents=True)
+        (self.destination / "ModUploader").write_text("incomplete old copy")
+        (self.destination / "mod-uploader.log").write_text("keep this log")
+        self.download(self.bundle())
+        self.assertEqual((self.destination / "ModUploader").read_text(), "official ModUploader")
+        self.assertTrue((self.destination / "libsteam_api.dylib").is_file())
+        self.assertEqual((self.destination / "mod-uploader.log").read_text(), "keep this log")
+
+    def test_failed_download_preserves_existing_files_and_cleans_temporary_files(self):
+        self.destination.mkdir(parents=True)
+        executable = self.destination / "ModUploader"
+        executable.write_text("original")
+        with patch.object(steam_runtime.urllib.request, "urlopen",
+                          side_effect=urllib.error.URLError("offline")):
+            with self.assertRaisesRegex(ValueError, "Retry, or manually extract"):
+                steam_runtime.ensure_uploader(self.root)
+        self.assertEqual(executable.read_text(), "original")
+        self.assertEqual(list(self.destination.parent.glob(".uploader-*")), [])
+
+    def test_rejects_bad_checksum_incomplete_archive_and_unsafe_paths(self):
+        cases = ((self.bundle(), "0" * 64, "checksum mismatch"),
+                 (self.bundle(["ModUploader"]), None, "incomplete"),
+                 (self.bundle(["../escaped"]), None, "Unsafe"),
+                 (self.bundle(["/absolute"]), None, "Unsafe"))
+        for data, digest, message in cases:
+            with self.subTest(message=message), self.assertRaisesRegex(ValueError, message):
+                self.download(data, digest)
+            self.assertFalse(self.destination.exists())
+            self.assertEqual(list(self.destination.parent.glob(".uploader-*")), [])
+        self.assertFalse((self.root / "references/escaped").exists())
 
 
 if __name__ == "__main__":

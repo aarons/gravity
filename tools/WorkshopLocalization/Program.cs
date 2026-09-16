@@ -13,11 +13,12 @@ try
             --workspace defaults to ./workshop. --language selects one Steam API code for dry-run.
             --require-all fails unless all 14 supported Workshop translations exist.
             validate and dry-run inspect source listing files offline.
-            publish: publish a frozen workspace created by package.sh (all languages by default).
+            publish: publish a frozen workspace created by prepare.sh (all languages by default).
             publish --language CODE: update only that language, without uploading shared content.
             publish --previews-only: reupload all shared gallery images in filename order.
             publish --dry-run: inspect the frozen release offline; no Steam connection or writes.
             publish requires --state-directory PATH outside the prepared workspace for receipts/backups.
+            publish requires --item-directory PATH containing the persistent mod_id.txt (created on first release).
             Prefer ./release.sh, which also checks source freshness and the English review copy.
             """);
         return args.Length == 0 ? 1 : 0;
@@ -32,6 +33,7 @@ try
     var offline = false;
     var previewsOnly = false;
     string? stateDirectory = null;
+    string? itemDirectory = null;
     var seen = new HashSet<string>(StringComparer.Ordinal);
     for (var i = 1; i < args.Length; i++)
     {
@@ -45,11 +47,13 @@ try
             case "--previews-only": previewsOnly = true; break;
             case "--workspace":
             case "--state-directory":
+            case "--item-directory":
             case "--language":
                 if (++i == args.Length || string.IsNullOrWhiteSpace(args[i]) || args[i].StartsWith("--"))
                     throw new ArgumentException($"{option} requires a value.");
                 if (option == "--workspace") workspace = Path.GetFullPath(args[i]);
                 else if (option == "--state-directory") stateDirectory = Path.GetFullPath(args[i]);
+                else if (option == "--item-directory") itemDirectory = Path.GetFullPath(args[i]);
                 else selectedLanguage = args[i];
                 break;
             default: throw new ArgumentException($"Unknown option: {option}.");
@@ -57,14 +61,20 @@ try
     }
     if (selectedLanguage != null && command == "validate")
         throw new ArgumentException("--language is only supported with dry-run or publish.");
-    if (command != "publish" && (offline || stateDirectory != null || previewsOnly))
-        throw new ArgumentException("--dry-run, --previews-only and --state-directory require publish.");
+    if (command != "publish" && (offline || stateDirectory != null || itemDirectory != null || previewsOnly))
+        throw new ArgumentException("--dry-run, --previews-only, --state-directory and --item-directory require publish.");
     if (previewsOnly && selectedLanguage != null)
         throw new ArgumentException("--previews-only cannot be combined with --language: the gallery is shared.");
 
     if (command == "publish")
     {
         var release = PreparedRelease.Read(workspace);
+        if (stateDirectory == null || stateDirectory == workspace
+            || stateDirectory.StartsWith(workspace + Path.DirectorySeparatorChar, StringComparison.Ordinal)
+            || itemDirectory == null || itemDirectory == workspace
+            || itemDirectory.StartsWith(workspace + Path.DirectorySeparatorChar, StringComparison.Ordinal))
+            throw new ArgumentException("publish requires --state-directory and --item-directory outside the prepared workspace.");
+        var target = new WorkshopIdentity(itemDirectory, stateDirectory).Inspect(release, selectedLanguage == null && !previewsOnly);
         if (selectedLanguage != null && !release.Listings.Any(l => l.Language == selectedLanguage))
             throw new ArgumentException($"No prepared translation for {selectedLanguage}.");
         if (offline)
@@ -72,7 +82,9 @@ try
             Console.WriteLine(JsonSerializer.Serialize(new
             {
                 mode = "offline-prepared-release", appId = 2868840,
-                publishedFileId = release.ItemId.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                publishedFileId = target.ItemId == 0 ? null : target.ItemId.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                itemAction = target.ItemId == 0 ? "create item and save its ID" : "update existing item",
+                visibility = release.Settings.GetProperty("visibility").GetString(),
                 sharedContent = selectedLanguage == null && !previewsOnly ? "compare Steam fingerprint, upload only if different" : "skip",
                 previews = new { mode = previewsOnly ? "reupload" : selectedLanguage == null ? "reconcile and verify" : "skip",
                     files = PreviewGallery.Files(release).Select(Path.GetFileName) },
@@ -82,12 +94,9 @@ try
             }, Publisher.JsonOptions));
             return 0;
         }
-        if (stateDirectory == null || stateDirectory == workspace
-            || stateDirectory.StartsWith(workspace + Path.DirectorySeparatorChar, StringComparison.Ordinal))
-            throw new ArgumentException("publish requires --state-directory outside the prepared workspace.");
         var native = Path.Combine(workspace, "publisher/libsteam_api.dylib");
         using var client = new SteamWorkshopClient(native);
-        return new Publisher(client, stateDirectory, Console.WriteLine).Run(release, selectedLanguage, previewsOnly);
+        return new Publisher(client, stateDirectory, Console.WriteLine).Run(release, selectedLanguage, previewsOnly, itemDirectory);
     }
 
     var catalog = ListingFiles.ReadLanguages();
