@@ -96,7 +96,8 @@ internal static class GravitySettingsMenu
             // Ignore the texture's native minimum size before setting the preview bounds.
             ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize, StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
             Texture = GD.Load<Texture2D>("res://images/atlases/ui_atlas.sprites/map/icons/map_monster.tres"),
-            Position = new Vector2(120, 214), Size = new Vector2(56, 56), PivotOffset = new Vector2(28, 28),
+            // Allow for the asset's transparent padding so the visible icon matches the map more closely.
+            Position = new Vector2(100, 194), Size = new Vector2(96, 96), PivotOffset = new Vector2(48, 48),
             MouseFilter = Control.MouseFilterEnum.Ignore,
         };
         previewPanel.AddChild(encounterIcon);

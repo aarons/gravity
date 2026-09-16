@@ -8,9 +8,9 @@ fall into a compact pile around the starting Ancient.
 - The starting Ancient stays in its original position and must be visited first.
 - Then choose **any unvisited encounter**, in any order. Visited encounters
   stay visible in the pile and cannot be selected again.
-- By default, the boss unlocks after **15 encounters**. You can keep exploring
-  after unlocking it; an optional setting locks normal encounters as soon as
-  the boss unlocks. Entering the boss ends ordinary encounter selection.
+- By default, the boss unlocks after **15 encounters**, and normal encounters
+  lock so you must face the boss. Turn off encounter locking in settings to keep
+  exploring after unlocking it. Entering the boss ends ordinary encounter selection.
   Double-boss acts retain their second boss, which unlocks after the first.
   Each act starts a fresh count.
 - On the first map opening, encounters fall with a simple circle collision
@@ -45,6 +45,11 @@ fall into a compact pile around the starting Ancient.
 
 Open the game's **Mods** page and select **Gravity**. Run settings are shown
 directly in its information panel, under **Gravity settings** without a tagline.
+Directly below the header: **Changes to settings are applied to a new run.
+The host’s settings are used in a co-op game.** A new run snapshots both rules;
+later acts, saves, and reloads retain them. Existing saves without a requirement
+snapshot use 15; saves without the lock setting allow continued exploration.
+Clients' personal defaults are not overwritten.
 
 If **BaseLib** or **RitsuLib** is installed and enabled, Gravity also appears in
 its mod-settings panel. RitsuLib provides main-menu and pause-menu shortcuts;
@@ -57,23 +62,22 @@ settings; color and pulse controls are available through the in-run appearance p
 - **None required, boss is always available**
 - **After 15 encounters - Game default** (selected by default)
 - **After all encounters - A very long playthrough**
-- **After a custom number:** Enter **0–999** or use minus/plus. The custom number
-  starts at **15** and is remembered when switching choices. Entering **0** selects
-  None required. Selecting the 15-encounter option restores the default rule.
+- **After a custom number of encounters:** Enter **0–999** or use minus/plus. The
+  custom number starts at **15** and is remembered when switching choices. At **0**,
+  Custom and None required are both checked, and the number control stays visible.
+  Selecting the 15-encounter option restores the default rule.
 
 A custom number above the act's available encounters requires visiting them all. The
 starting Ancient must still be visited first, and double bosses remain sequential.
-The custom field and its capping explanation appear only with Custom selected.
+The custom field and its indented capping explanation appear only with Custom
+selected: **Setting the number higher than available encounters won't add more,
+it will just require all of them to be visited.**
 
-- **Lock normal encounters once the boss unlocks:** Off by default. When enabled,
+- **Lock normal encounters once the boss unlocks:** On by default. When enabled,
   reaching the required count leaves only the boss selectable. The checkbox is
   disabled and has no effect with **None required, boss is always available**
   (including a custom count of 0). Switching back to a requirement remembers the
   checkbox choice. It appears in the native Mods, BaseLib, and RitsuLib panels.
-- **Applies to new runs. In co-op, the host’s setting is used.** A new run snapshots
-  both rules; later acts, saves, and reloads retain them. Existing saves without a
-  requirement snapshot use 15; saves without the lock setting allow continued
-  exploration. Clients' personal defaults are not overwritten.
 
 ### In-run appearance
 
@@ -86,7 +90,8 @@ examples.
   restores the default. Both sliders have large drag handles and click targets.
 - **Encounter pulse:** Adjust idle pulse strength from **Off** to **100%** (the
   original effect), with **25%** as the default. Changes apply immediately; hover
-  and press feedback remain.
+  and press feedback remain. The live preview uses a larger encounter icon for
+  easier comparison with the map.
 
 The inline and library panels scroll as needed and support keyboard/controller
 focus. The in-run appearance popup scales to the viewport and closes with
@@ -147,7 +152,8 @@ In-game acceptance checks:
    continuing counterclockwise around the bottom and ending to its right.
    Complete 15: the map opens on
    the boss row and the available boss has a steady gold ring. Unvisited ordinary
-   encounters remain selectable; visit another and check `16/15` and the full ring.
+   encounters become dim and unselectable with the default encounter lock enabled.
+   With locking off in a separate run, visit another and check `16/15` and the full ring.
    In a double-boss act, the second stays dim with its lock until the first is
    visited. Check that the next act resets progress to `0/15`.
 5. Check mouse, controller, drawing tools, fast mode, a small viewport, and co-op
@@ -162,8 +168,11 @@ In-game acceptance checks:
    switch mods or leave without pressing Enter; reopen and restart to confirm
    persistence. Verify old All/off preferences select All/None, and custom numbers
    survive switching choices and restarting. Check the initial custom value of 15,
-   entry of 0 and 999, capping 1000 to 999, and invalid input. Labels should wrap,
-   selecting a label should select its radio button, and hidden custom controls
+   entry of 0 and 999, capping 1000 to 999, and invalid input.
+   Reducing Custom from 1 to 0 should check both Custom and None without hiding
+   the control or moving focus; plus should return to 1 and uncheck None. Reopen
+   at Custom 0 and verify both remain checked with the control visible.
+   Labels should wrap, selecting a label should select its checkbox, and hidden custom controls
    should be skipped by keyboard/controller navigation.
    Repeat with neither library, only BaseLib, only RitsuLib, and both enabled.
    Gravity should appear once in each available library's settings panel, including
@@ -179,15 +188,15 @@ In-game acceptance checks:
 8. Choose None, the default 15, All, and custom values 1, 99, and 999 across
    separate new runs. Verify numeric capping without changing the saved default.
    The active run must stay unchanged after editing defaults, save/reload, and
-   act transitions. Check boss unlock, continued exploration afterward, no ring or
+   act transitions. Check boss unlock, continued exploration with locking off, no ring or
    denominator at 0, and sequential double bosses. The Ancient must still be
    visited first. Load a pre-settings save and confirm a goal of 15.
 9. In co-op, start with different local defaults and check that everyone uses the
    host's requirement and encounter lock. Repeat after saving/loading and a client
    reconnect. Check that the client's next solo run still uses their own default, appearance settings
    remain independent, and a mismatched Gravity version is rejected on connection.
-10. Enable **Lock normal encounters once the boss unlocks** in each configuration
-    panel. Start a new run and verify normal encounters remain selectable before
+10. With fresh preferences, verify **Lock normal encounters once the boss unlocks**
+    is enabled in each configuration panel. Start a new run and verify normal encounters remain selectable before
     the requirement, then become dim and unselectable exactly when the boss
     unlocks, with mouse, controller, and co-op votes. Save/reload and advance acts
     to check the rule persists and the count resets. Double bosses stay sequential.

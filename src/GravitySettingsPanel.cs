@@ -27,14 +27,17 @@ internal sealed class GravitySettingsPanel
             title.AutowrapMode = TextServer.AutowrapMode.WordSmart;
             content.AddChild(title);
         }
+        var guidance = Label(Localize("settings.next_run"), 20, "C4CCD1");
+        guidance.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+        content.AddChild(guidance);
         var heading = Label(Localize("settings.encounters"), 26);
         heading.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         content.AddChild(heading);
-        var group = new ButtonGroup();
         CheckBox Option(string text, bool independent = false)
         {
             var optionRow = new HBoxContainer();
-            var option = new CheckBox { ButtonGroup = independent ? null : group, CustomMinimumSize = new Vector2(48, 48) };
+            // Custom zero and None describe the same rule and can both be checked.
+            var option = new CheckBox { CustomMinimumSize = new Vector2(48, 48) };
             StyleButton(option);
             optionRow.AddChild(option);
             var caption = Label(text, 22);
@@ -47,7 +50,8 @@ internal sealed class GravitySettingsPanel
                 if (!option.Disabled && input is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left })
                 {
                     option.GrabFocus();
-                    option.ButtonPressed = !independent || !option.ButtonPressed;
+                    if (independent) option.ButtonPressed = !option.ButtonPressed;
+                    else option.EmitSignal(BaseButton.SignalName.Pressed);
                     caption.AcceptEvent();
                 }
             };
@@ -79,24 +83,24 @@ internal sealed class GravitySettingsPanel
         row.AddChild(Label(Localize("settings.custom_range"), 20, "C4CCD1"));
         var customHint = Label(Localize("settings.custom_hint"), 20, "C4CCD1");
         customHint.AutowrapMode = TextServer.AutowrapMode.WordSmart;
-        content.AddChild(customHint);
+        var hintMargin = new MarginContainer();
+        hintMargin.AddThemeConstantOverride("margin_left", 48);
+        hintMargin.AddChild(customHint);
+        content.AddChild(hintMargin);
         var lockEncounters = Option(Localize("settings.lock_encounters"), independent: true);
-        var guidance = Label(Localize("settings.next_run"), 20, "C4CCD1");
-        guidance.AutowrapMode = TextServer.AutowrapMode.WordSmart;
-        content.AddChild(guidance);
         var editing = false;
         Action? refreshCustomFocus = null;
         void Refresh()
         {
             number.Text = GravitySettings.CustomEncounterCount.ToString(CultureInfo.InvariantCulture);
             editing = false;
-            none.SetPressedNoSignal(GravitySettings.Mode == GravitySettings.EncounterMode.None);
+            none.SetPressedNoSignal(GravitySettings.NextRunRequirement == 0);
             normal.SetPressedNoSignal(GravitySettings.Mode == GravitySettings.EncounterMode.Default);
             all.SetPressedNoSignal(GravitySettings.Mode == GravitySettings.EncounterMode.All);
             custom.SetPressedNoSignal(GravitySettings.Mode == GravitySettings.EncounterMode.Custom);
             if (!custom.ButtonPressed && (number.HasFocus() || minus.HasFocus() || plus.HasFocus()))
                 none.GrabFocus();
-            row.Visible = customHint.Visible = custom.ButtonPressed;
+            row.Visible = hintMargin.Visible = custom.ButtonPressed;
             lockEncounters.SetPressedNoSignal(GravitySettings.LockEncountersAfterBossUnlock);
             lockEncounters.Disabled = GravitySettings.NextRunRequirement == 0;
             if (lockEncounters.Disabled && lockEncounters.HasFocus()) none.GrabFocus();
@@ -107,8 +111,7 @@ internal sealed class GravitySettingsPanel
         void SetNumber(int value)
         {
             GravitySettings.CustomEncounterCount = value;
-            GravitySettings.Mode = GravitySettings.CustomEncounterCount == 0
-                ? GravitySettings.EncounterMode.None : GravitySettings.EncounterMode.Custom;
+            GravitySettings.Mode = GravitySettings.EncounterMode.Custom;
             Refresh();
             Changed();
         }
@@ -121,15 +124,19 @@ internal sealed class GravitySettingsPanel
         void Select(GravitySettings.EncounterMode mode)
         {
             Commit();
-            GravitySettings.Mode = mode;
+            // Selecting the already-equivalent None option should keep the zero control open.
+            if (!(mode == GravitySettings.EncounterMode.None
+                && GravitySettings.Mode == GravitySettings.EncounterMode.Custom
+                && GravitySettings.CustomEncounterCount == 0))
+                GravitySettings.Mode = mode;
             Refresh();
             Changed();
         }
-        // Programmatic selection when a caption is clicked also emits Toggled.
-        none.Toggled += selected => { if (selected) Select(GravitySettings.EncounterMode.None); };
-        normal.Toggled += selected => { if (selected) Select(GravitySettings.EncounterMode.Default); };
-        all.Toggled += selected => { if (selected) Select(GravitySettings.EncounterMode.All); };
-        custom.Toggled += selected => { if (selected) Select(GravitySettings.EncounterMode.Custom); };
+        // Refresh restores the checked state even when an active choice is pressed again.
+        none.Pressed += () => Select(GravitySettings.EncounterMode.None);
+        normal.Pressed += () => Select(GravitySettings.EncounterMode.Default);
+        all.Pressed += () => Select(GravitySettings.EncounterMode.All);
+        custom.Pressed += () => Select(GravitySettings.EncounterMode.Custom);
         lockEncounters.Toggled += selected =>
         {
             GravitySettings.LockEncountersAfterBossUnlock = selected;

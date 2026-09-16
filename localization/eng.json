@@ -7,7 +7,7 @@
   "settings.open": "Open Gravity appearance settings.",
   "settings.title": "Gravity settings",
   "settings.encounters": "How many encounters are required to unlock the boss?",
-  "settings.next_run": "Applies to new runs. In co-op, the host’s setting is used.",
+  "settings.next_run": "Changes to settings are applied to a new run. The host’s settings are used in a co-op game.",
   "settings.color": "Highlight color",
   "settings.reset_color": "Reset to gold",
   "settings.pulse": "Encounter pulse",
@@ -23,7 +23,7 @@
   "settings.encounters_none": "None required, boss is always available",
   "settings.encounters_default": "After 15 encounters - Game default",
   "settings.encounters_all": "After all encounters - A very long playthrough",
-  "settings.encounters_custom": "After a custom number",
-  "settings.custom_hint": "If fewer encounters are available, you must visit them all.",
+  "settings.encounters_custom": "After a custom number of encounters",
+  "settings.custom_hint": "Setting the number higher than available encounters won't add more, it will just require all of them to be visited.",
   "settings.custom_range": "0–999"
 }
