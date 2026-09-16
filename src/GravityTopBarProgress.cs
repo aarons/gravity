@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using Godot;
 using HarmonyLib;
 using MegaCrit.Sts2.addons.mega_text;
@@ -12,6 +13,25 @@ namespace Gravity;
 
 internal static class GravityTopBarProgress
 {
+    private sealed class Binding(IRunState? run, MegaLabel label)
+    {
+        public IRunState? Run = run;
+        private readonly bool _hadColorOverride = label.HasThemeColorOverride("font_color");
+        private readonly Color _normalColor = label.GetThemeColor("font_color");
+
+        public void RefreshColor()
+        {
+            var progress = Run is RunState run && Applies(run) ? GravityRules.Progress(run) : null;
+            if (progress is { RequiredEncounters: > 0 } && progress.EncountersVisited >= progress.RequiredEncounters)
+                label.AddThemeColorOverride("font_color", GravitySettings.HighlightColor);
+            else if (_hadColorOverride)
+                label.AddThemeColorOverride("font_color", _normalColor);
+            else
+                label.RemoveThemeColorOverride("font_color");
+        }
+    }
+
+    private static readonly ConditionalWeakTable<MegaLabel, Binding> Bindings = new();
     // The native tooltip accepts LocStrings, while Gravity owns its localization.
     private static readonly PropertyInfo TipTitle = AccessTools.Property(typeof(HoverTip), nameof(HoverTip.Title));
     private static readonly PropertyInfo TipDescription = AccessTools.Property(typeof(HoverTip), nameof(HoverTip.Description));
@@ -22,7 +42,26 @@ internal static class GravityTopBarProgress
     {
         var progress = GravityRules.Progress(run);
         return progress.RequiredEncounters == 0 ? progress.EncountersVisited.ToString()
-            : string.Format(MainFile.Localize("map.progress"), progress.EncountersVisited, progress.RequiredEncounters);
+            : string.Format(MainFile.Localize("map.progress"),
+                Math.Min(progress.EncountersVisited, progress.RequiredEncounters), progress.RequiredEncounters);
+    }
+
+    public static void UpdateColor(IRunState? run, MegaLabel label)
+    {
+        if (!Bindings.TryGetValue(label, out var binding))
+        {
+            if (!Applies(run)) return;
+            binding = new Binding(run, label);
+            Bindings.Add(label, binding);
+            GravitySettings.AppearanceChanged += binding.RefreshColor;
+            label.TreeExiting += () =>
+            {
+                GravitySettings.AppearanceChanged -= binding.RefreshColor;
+                Bindings.Remove(label);
+            };
+        }
+        binding.Run = run;
+        binding.RefreshColor();
     }
 
     public static HoverTip Tooltip(RunState run)
@@ -43,6 +82,7 @@ internal static class EncounterCounterPatch
     // Initialize and RoomEntered both use this hook, including reloads and new acts.
     private static bool Prefix(NTopBarFloorIcon __instance, IRunState ____runState, MegaLabel ____floorNumLabel)
     {
+        GravityTopBarProgress.UpdateColor(____runState, ____floorNumLabel);
         if (!GravityTopBarProgress.Applies(____runState)) return true;
         GravitySettingsMenu.Attach(__instance, (RunState)____runState);
         // The native HBox containers expand to fit the text and move the boss icon.

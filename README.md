@@ -20,9 +20,10 @@ fall into a compact pile around the starting Ancient.
   the fall. Reopening keeps the settled positions.
 - The map scrolls only across the compact pile. Directional controller navigation
   follows the new positions. The status bar's stairs indicator shows encounter
-  progress (`0/15`, `15/15`, and beyond) in place of total floors climbed, both on
-  the map and in rooms. The denominator is the boss unlock requirement, not a
-  visit limit unless encounter locking is enabled. Its **Encounters** tooltip
+  progress in place of total floors climbed, both on the map and in rooms.
+  It fills from `0/15` to `15/15`, then stays at the goal in your highlight color
+  (gold by default), even if you keep exploring with encounter locking off.
+  Its **Encounters** tooltip
   explains the per-act goal; click the stairs or number to open settings.
   With the requirement off, only the number
   visited is shown. There is no separate map counter.
@@ -86,7 +87,7 @@ room, to open the smaller appearance panel with live boss-ring and encounter-pul
 examples.
 
 - **Highlight color:** Choose directly on the slider's color spectrum and preview
-  it immediately on boss progress rings and in the example. **Reset to gold**
+  it immediately on boss progress rings, the completed top-bar counter, and in the example. **Reset to gold**
   restores the default. Both sliders have large drag handles and click targets.
 - **Encounter pulse:** Adjust idle pulse strength from **Off** to **100%** (the
   original effect), with **25%** as the default. Changes apply immediately; hover
@@ -153,9 +154,12 @@ In-game acceptance checks:
    Complete 15: the map opens on
    the boss row and the available boss has a steady gold ring. Unvisited ordinary
    encounters become dim and unselectable with the default encounter lock enabled.
-   With locking off in a separate run, visit another and check `16/15` and the full ring.
+   The completed counter should use the chosen highlight color. With locking off
+   in a separate run, visit more encounters and check that it stays at `15/15`
+   with the full ring. Change the highlight color and reset to gold: the completed
+   counter should update immediately, including in rooms and after reloading.
    In a double-boss act, the second stays dim with its lock until the first is
-   visited. Check that the next act resets progress to `0/15`.
+   visited. Check that the next act resets progress to `0/15` and its normal text color.
 5. Check mouse, controller, drawing tools, fast mode, a small viewport, and co-op
    votes. Restart with the same seed in a new run: the new run should animate.
 6. On the Mods page, select Gravity: settings should appear under **Gravity settings**,

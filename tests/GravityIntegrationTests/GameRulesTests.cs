@@ -24,6 +24,7 @@ internal static class GameRulesTests
         history[0].Add(new MapPointHistoryEntry());
         var choices = MapTravel.GetTravelablePointsFrom(run, map.StartingMapPoint).ToArray();
         Check(choices.Length == 60, "Patched API must expose every encounter");
+        Check(GravityTopBarProgress.Text(run) == "0/15", "A new act must start with an empty goal");
         var order = choices.OrderByDescending(point => point.coord.row).Take(15).ToArray();
         for (var i = 0; i < order.Length; i++)
         {
@@ -33,6 +34,7 @@ internal static class GameRulesTests
             var entry = new MapPointHistoryEntry();
             history[0].Add(entry);
             Check(ReferenceEquals(run.GetHistoryEntryFor(new MapLocation(point.coord, 0)), entry), "History used row instead of visit order");
+            Check(GravityTopBarProgress.Text(run) == $"{i + 1}/15", "Counter must advance up to the goal");
         }
         var unlocked = MapTravel.GetTravelablePointsFrom(run, run.CurrentMapPoint!).ToArray();
         Check(unlocked.Length == 46 && unlocked.Contains(map.BossMapPoint), "Boss unlock must preserve the remaining encounters");
@@ -51,7 +53,8 @@ internal static class GameRulesTests
             GravitySettings.RestoreEncounterPreferences(0, true);
             var capped = requirement == -1 ? 60 : Math.Min(requirement, 60);
             Check(GravityRules.Progress(run).RequiredEncounters == capped, "Rules must cap the snapshot to the act pool");
-            Check(GravityTopBarProgress.Text(run) == $"15/{capped}", "Counter must show the snapshot, not edited defaults");
+            Check(GravityTopBarProgress.Text(run) == $"{Math.Min(15, capped)}/{capped}",
+                "Counter must cap displayed progress at the snapshotted goal, not edited defaults");
             Check(MapTravel.GetTravelablePointsFrom(run, run.CurrentMapPoint!).Contains(map.BossMapPoint) == (15 >= capped),
                 "Travel must use the same snapshot as the counter");
         }
@@ -60,6 +63,15 @@ internal static class GameRulesTests
             "Always-unlocked bosses must ignore the encounter lock");
         Check(GravityRules.Progress(run).RequiredEncounters == 0, "Disabled requirement did not reach travel rules");
         Check(GravityTopBarProgress.Text(run) == "15", "Off must hide the denominator");
+        GravityRunSettings.Set(run.ExtraFields, 15);
+        foreach (var point in choices.Except(order).Take(2))
+        {
+            run.AddVisitedMapCoord(point.coord);
+            Check(GravityTopBarProgress.Text(run) == "15/15", "Extra encounters must keep the completed goal display");
+        }
+        Check(GravityRules.Progress(run).EncountersVisited == 17, "Display capping must preserve the actual encounter count");
+        GravityRunSettings.Set(run.ExtraFields, 0);
+        Check(GravityTopBarProgress.Text(run) == "17", "An unrestricted counter must continue counting past 15");
         GravitySettings.RestoreEncounterPreferences(15, true);
         run.AddVisitedMapCoord(map.BossMapPoint.coord);
         Check(MapTravel.GetTravelablePointsFrom(run, map.BossMapPoint).SequenceEqual([map.SecondBossMapPoint!]), "Second boss order failed");
