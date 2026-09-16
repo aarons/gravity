@@ -3,6 +3,106 @@
     "localization/deu.json": {
       "english_sha256": "16a744b6b52f6693080db865f41764e11fd9bedfbf5ba3d3161204176d13d217",
       "translation_sha256": "e7629c453ff3385f0a332921e7086f0f58b83f8fb0539e906b9372c0a1964ed4"
+    },
+    "localization/esp.json": {
+      "english_sha256": "16a744b6b52f6693080db865f41764e11fd9bedfbf5ba3d3161204176d13d217",
+      "translation_sha256": "b037d8ecb620bbf08037eb970bdd495b63c864e9e9d7ae5af2ac43dc21c5ebdb"
+    },
+    "localization/fra.json": {
+      "english_sha256": "16a744b6b52f6693080db865f41764e11fd9bedfbf5ba3d3161204176d13d217",
+      "translation_sha256": "fe5d89efbb685db926214c27bf54e7b84f4bc88afd019f55b58f832a1918db23"
+    },
+    "localization/ita.json": {
+      "english_sha256": "16a744b6b52f6693080db865f41764e11fd9bedfbf5ba3d3161204176d13d217",
+      "translation_sha256": "6c6328392fa9578244a4e9743fd63ea584546f49a9206e951d995858edf923f1"
+    },
+    "localization/jpn.json": {
+      "english_sha256": "16a744b6b52f6693080db865f41764e11fd9bedfbf5ba3d3161204176d13d217",
+      "translation_sha256": "64506f8cf456bfd1c5c25bccfa0fed206743b6ce202c1e3aa7af0965b21d779d"
+    },
+    "localization/kor.json": {
+      "english_sha256": "16a744b6b52f6693080db865f41764e11fd9bedfbf5ba3d3161204176d13d217",
+      "translation_sha256": "a64d207d2558d43780ee1f4c17cb1d406d0d294ae80901f581cd15ed6061bb95"
+    },
+    "localization/pol.json": {
+      "english_sha256": "16a744b6b52f6693080db865f41764e11fd9bedfbf5ba3d3161204176d13d217",
+      "translation_sha256": "6cbe7a502a0811d4f6075d0f5aee2ed79c93494bfdd6c02ed4d5916ca0661042"
+    },
+    "localization/ptb.json": {
+      "english_sha256": "16a744b6b52f6693080db865f41764e11fd9bedfbf5ba3d3161204176d13d217",
+      "translation_sha256": "7f9d2a1abccc4d69da001b9b31361e6fb9cda2dd5af5a0b0c501da646bdfce8f"
+    },
+    "localization/rus.json": {
+      "english_sha256": "16a744b6b52f6693080db865f41764e11fd9bedfbf5ba3d3161204176d13d217",
+      "translation_sha256": "92b415c8ff80d3b828a8132aea45ec7cff3c019123b517b0907e74d833b3e295"
+    },
+    "localization/spa.json": {
+      "english_sha256": "16a744b6b52f6693080db865f41764e11fd9bedfbf5ba3d3161204176d13d217",
+      "translation_sha256": "dfa18afd05f1f798dad651ddbdcde1cef034edceb2e1af8c28a3113c4cc026f6"
+    },
+    "localization/tha.json": {
+      "english_sha256": "16a744b6b52f6693080db865f41764e11fd9bedfbf5ba3d3161204176d13d217",
+      "translation_sha256": "76f504b0b5b8ddd2dd9ff86de6d0e17b5739f64d6a3f6321c665eaad7cd49248"
+    },
+    "localization/tur.json": {
+      "english_sha256": "16a744b6b52f6693080db865f41764e11fd9bedfbf5ba3d3161204176d13d217",
+      "translation_sha256": "baa380c715ce271471fca003ea23cc12169ff6c078d5da0d36362e5ea271f505"
+    },
+    "localization/zhs.json": {
+      "english_sha256": "16a744b6b52f6693080db865f41764e11fd9bedfbf5ba3d3161204176d13d217",
+      "translation_sha256": "3aa1295afdf9a4fad748efc0c60867cd4f3d9575be14b0aac8b568d1fe4cc007"
+    },
+    "workshop/localizations/brazilian.json": {
+      "english_sha256": "41116cf6237da5104f5f9c4eed9b4f8337702167a9a6460d1263922418e706bf",
+      "translation_sha256": "769a1ad594b00b7eeb816c12e6af928914af67c1f9d4907826dccd403baaaf25"
+    },
+    "workshop/localizations/french.json": {
+      "english_sha256": "41116cf6237da5104f5f9c4eed9b4f8337702167a9a6460d1263922418e706bf",
+      "translation_sha256": "d2e722830faf1c17dc363a323e3acd62c4b1464bfd3e6595fdf90ff3e276278b"
+    },
+    "workshop/localizations/german.json": {
+      "english_sha256": "41116cf6237da5104f5f9c4eed9b4f8337702167a9a6460d1263922418e706bf",
+      "translation_sha256": "49d86ba970767c6662f456d46454d4d8ea0f55b87ccb1facbaa51dec9a930711"
+    },
+    "workshop/localizations/italian.json": {
+      "english_sha256": "41116cf6237da5104f5f9c4eed9b4f8337702167a9a6460d1263922418e706bf",
+      "translation_sha256": "1bdbd6e1579c4145471b1da2018c69a7ace1d44f35c3771d115e213a74b4788e"
+    },
+    "workshop/localizations/japanese.json": {
+      "english_sha256": "41116cf6237da5104f5f9c4eed9b4f8337702167a9a6460d1263922418e706bf",
+      "translation_sha256": "f8bea856ce3c7f81774c71e7c5c541a68ff917ce0980dd4553c6d52d9fd3419a"
+    },
+    "workshop/localizations/koreana.json": {
+      "english_sha256": "41116cf6237da5104f5f9c4eed9b4f8337702167a9a6460d1263922418e706bf",
+      "translation_sha256": "7659301923cf222348b61747bdcfa32f55aa6d9c9ecca3c392703126b04d3da6"
+    },
+    "workshop/localizations/latam.json": {
+      "english_sha256": "41116cf6237da5104f5f9c4eed9b4f8337702167a9a6460d1263922418e706bf",
+      "translation_sha256": "311fe8bd06284feb3b38c04f989baa66522ca11257a84993986e3b9fc351933b"
+    },
+    "workshop/localizations/polish.json": {
+      "english_sha256": "41116cf6237da5104f5f9c4eed9b4f8337702167a9a6460d1263922418e706bf",
+      "translation_sha256": "c0e987656cfa3f8f9e3fc0ed858796ff3dfb5b325e3888bd406e08ad54e88cb3"
+    },
+    "workshop/localizations/russian.json": {
+      "english_sha256": "41116cf6237da5104f5f9c4eed9b4f8337702167a9a6460d1263922418e706bf",
+      "translation_sha256": "065ea44397529972e44887dcc6c820cb44e1e91c8290ab2ae627d3de2ee33eba"
+    },
+    "workshop/localizations/schinese.json": {
+      "english_sha256": "41116cf6237da5104f5f9c4eed9b4f8337702167a9a6460d1263922418e706bf",
+      "translation_sha256": "85c57800aa9e056e1d7e195a1cc8e518f2112cc0bea0e99b07f987c727acb5ee"
+    },
+    "workshop/localizations/spanish.json": {
+      "english_sha256": "41116cf6237da5104f5f9c4eed9b4f8337702167a9a6460d1263922418e706bf",
+      "translation_sha256": "b2cc4a04837bfbcd61eee52b7e17de74370d8ca8abb4267ecf3de1bfbaf411c3"
+    },
+    "workshop/localizations/thai.json": {
+      "english_sha256": "41116cf6237da5104f5f9c4eed9b4f8337702167a9a6460d1263922418e706bf",
+      "translation_sha256": "723bfde698eca89a4fe2fd3b8f571e1c2e8cb689fdc93c0e47775a756f866c4b"
+    },
+    "workshop/localizations/turkish.json": {
+      "english_sha256": "41116cf6237da5104f5f9c4eed9b4f8337702167a9a6460d1263922418e706bf",
+      "translation_sha256": "058da33fa7f04984c0bbb4eafecf1cade25b79747408275c29f6efa6c0fed33a"
     }
   },
   "version": 1

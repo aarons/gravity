@@ -24,4 +24,5 @@ workshop/workshop.json
 workshop/first-upload/
 workshop/.first-upload-*/
 .localization-review-*
+.localization-update.lock
 /archives/

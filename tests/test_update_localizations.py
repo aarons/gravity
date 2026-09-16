@@ -4,9 +4,11 @@ import json
 import os
 from pathlib import Path
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 
 
@@ -38,18 +40,39 @@ class UpdateLocalizationsTests(unittest.TestCase):
         self.codex = self.bin / "codex"
         self.codex.write_text(f"#!{sys.executable}\n" + r'''
 import json
+import fcntl
 import os
 from pathlib import Path
 import re
 import sys
+import time
 
 prompt = sys.stdin.read()
 target = re.search(r"Update only (\S+) for", prompt)[1]
+def event(kind):
+    with open(os.environ["CALL_LOG"] + ".events", "a", encoding="utf-8") as stream:
+        fcntl.flock(stream, fcntl.LOCK_EX)
+        stream.write(json.dumps({"event": kind, "target": target, "pid": os.getpid()}) + "\n")
+        stream.flush()
+
 with open(os.environ["CALL_LOG"], "a", encoding="utf-8") as stream:
+    fcntl.flock(stream, fcntl.LOCK_EX)
     stream.write(json.dumps({"target": target, "prompt": prompt, "args": sys.argv[1:]}) + "\n")
+event("start")
+if os.environ.get("WAIT_FOR_JOBS"):
+    deadline = time.monotonic() + 10
+    while len(Path(os.environ["CALL_LOG"]).read_text().splitlines()) < int(os.environ["WAIT_FOR_JOBS"]):
+        if time.monotonic() > deadline:
+            sys.exit(2)
+        time.sleep(0.01)
+time.sleep(float(os.environ.get("JOB_DELAY", "0")))
 if target == os.environ.get("FAIL_TARGET"):
     Path(target).write_text('{"partial": "unfinished"}')
+    print("usage limit reached (simulated)")
+    event("failure")
     sys.exit(1)
+if os.environ.get("SUCCESS_DELAY"):
+    time.sleep(float(os.environ["SUCCESS_DELAY"]))
 if target == os.environ.get("INVALID_TARGET"):
     Path(target).write_text('{"wrong": "keys"}')
 if os.environ.get("REPAIR"):
@@ -60,6 +83,7 @@ if os.environ.get("CHANGE_ENGLISH"):
     data = json.loads(source.read_text())
     data[next(iter(data))] = "Changed during review"
     source.write_text(json.dumps(data))
+event("end")
 ''', encoding="utf-8")
         self.codex.chmod(0o755)
         self.env = {**os.environ, "PATH": f"{self.bin}:{os.environ['PATH']}",
@@ -77,6 +101,10 @@ if os.environ.get("CHANGE_ENGLISH"):
 
     def records(self):
         return json.loads((self.root / "localization-review.json").read_text())["translations"]
+
+    def events(self):
+        path = Path(str(self.log) + ".events")
+        return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
 
     def edit(self, relative, key, value):
         path = self.root / relative
@@ -152,7 +180,7 @@ if os.environ.get("CHANGE_ENGLISH"):
         self.assertEqual(len(self.calls()), 26)
 
     def test_failure_keeps_completed_reviews_and_retry_resumes(self):
-        self.run_update(status=1, FAIL_TARGET="localization/fra.json")
+        self.run_update("--jobs", "1", status=1, FAIL_TARGET="localization/fra.json")
         self.assertEqual(set(self.records()), {"localization/deu.json", "localization/esp.json"})
         self.run_update(REPAIR="1")
         self.assertEqual(len(self.calls()), 27)  # Only the failed file was repeated.
@@ -160,10 +188,10 @@ if os.environ.get("CHANGE_ENGLISH"):
         self.run_update("--check")
 
     def test_invalid_output_and_english_change_are_not_recorded(self):
-        result = self.run_update(status=1, INVALID_TARGET="localization/deu.json")
+        result = self.run_update("--jobs", "1", status=1, INVALID_TARGET="localization/deu.json")
         self.assertIn("missing", result.stderr)
         self.assertFalse((self.root / "localization-review.json").exists())
-        result = self.run_update(status=1, CHANGE_ENGLISH="1", REPAIR="1")
+        result = self.run_update("--jobs", "1", status=1, CHANGE_ENGLISH="1", REPAIR="1")
         self.assertIn("English changed while reviewing", result.stderr)
         self.assertFalse((self.root / "localization-review.json").exists())
 
@@ -210,9 +238,89 @@ if os.environ.get("CHANGE_ENGLISH"):
         self.run_update(status=1)
         self.assertFalse(self.log.exists())
         for args in (("--model",), ("--context",), ("--unknown",),
-                     ("--model", ""), ("--context", " ")):
+                     ("--model", ""), ("--context", " "), ("--jobs",),
+                     ("--jobs", "0"), ("--jobs", "-1"), ("--jobs", "1.5")):
             self.run_update(*args, status=2)
         self.run_update("--help")
+
+    def assert_parallel_run(self, jobs, *args):
+        self.run_update(*args, WAIT_FOR_JOBS=str(jobs), JOB_DELAY="0.08")
+        active = set()
+        completed_game = set()
+        maximum = 0
+        for event in self.events():
+            target = event["target"]
+            if event["event"] == "start":
+                if target.startswith("workshop/"):
+                    self.assertEqual(len(completed_game), 13)
+                active.add(target)
+                maximum = max(maximum, len(active))
+            else:
+                active.remove(target)
+                if target.startswith("localization/"):
+                    completed_game.add(target)
+        self.assertFalse(active)
+        self.assertEqual(maximum, jobs)
+        self.assertEqual(len(self.records()), 26)
+        self.run_update("--check")
+
+    def test_default_runs_four_jobs_and_waits_for_game_phase(self):
+        self.assert_parallel_run(4)
+
+    def test_concurrency_can_be_reduced_to_two(self):
+        self.assert_parallel_run(2, "--jobs", "2")
+
+    def test_parallel_failure_stops_queue_drains_successes_and_resumes(self):
+        result = self.run_update(status=1, FAIL_TARGET="localization/deu.json",
+                                 WAIT_FOR_JOBS="4", SUCCESS_DELAY="0.2")
+        self.assertIn("usage limit reached", result.stdout)
+        self.assertEqual(len(self.calls()), 4)
+        self.assertEqual(set(self.records()), {
+            "localization/esp.json", "localization/fra.json", "localization/ita.json"})
+        self.run_update("--jobs", "2", REPAIR="1")
+        self.assertEqual(len(self.calls()), 27)
+        self.run_update("--check")
+
+    def test_parallel_invalid_output_stops_queue(self):
+        self.run_update(status=1, INVALID_TARGET="localization/deu.json", WAIT_FOR_JOBS="4",
+                        JOB_DELAY="0.1")
+        self.assertNotIn("localization/deu.json", self.records())
+        self.assertTrue(all(call["target"].startswith("localization/") for call in self.calls()))
+
+    def test_parallel_source_change_prevents_receipts_and_more_jobs(self):
+        # One process changes English; its siblings wait until that change is visible.
+        self.codex.write_text(self.codex.read_text().replace(
+            'if os.environ.get("CHANGE_ENGLISH"):',
+            'if os.environ.get("CHANGE_ENGLISH") and target == "localization/deu.json":'
+        ).replace('event("end")', 'time.sleep(0.2)\nevent("end")'))
+        self.run_update(status=1, CHANGE_ENGLISH="1", WAIT_FOR_JOBS="4")
+        self.assertEqual(len(self.calls()), 4)
+        self.assertFalse((self.root / "localization-review.json").exists())
+
+    def test_interrupt_stops_children_and_concurrent_updater_is_rejected(self):
+        process = subprocess.Popen(["bash", str(self.root / "update-localizations.sh")],
+                                   cwd=self.root, env={**self.env, "JOB_DELAY": "30"},
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        try:
+            deadline = time.monotonic() + 10
+            while len(self.events()) < 4 and time.monotonic() < deadline:
+                time.sleep(0.02)
+            self.assertEqual(len(self.events()), 4)
+            result = self.run_update(status=1)
+            self.assertIn("Another localization update is running", result.stderr)
+            self.assertEqual(len(self.calls()), 4)
+            process.send_signal(signal.SIGINT)
+            stdout, stderr = process.communicate(timeout=10)
+            self.assertEqual(process.returncode, 130, stdout + stderr)
+            for event in self.events():
+                with self.assertRaises(ProcessLookupError):
+                    os.kill(event["pid"], 0)
+            self.assertFalse((self.root / "localization-review.json").exists())
+            self.run_update("--jobs", "2")  # Lock is released after interruption.
+        finally:
+            if process.poll() is None:
+                process.send_signal(signal.SIGINT)
+                process.communicate(timeout=10)
 
 
 if __name__ == "__main__":

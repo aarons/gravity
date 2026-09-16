@@ -257,14 +257,24 @@ folder, including files you put there; keep source files in this checkout.
 
 New feature work focuses on English. The template ships only English, with no
 pre-approved translations. When ready, `./update-localizations.sh` creates all
-26 non-English files in separate Codex sessions. It uses your configured model;
+26 non-English files in separate Codex sessions, with up to **4 running at once**.
+Use `./update-localizations.sh --jobs 2` to reduce concurrency, or `--jobs 1` for
+sequential reviews. `./prepare.sh` uses the four-job default; to prepare with fewer
+jobs, run the updater with `--jobs 2`, then `./prepare.sh --skip-localizations`.
+It uses your configured model;
 `--model MODEL` overrides it. `--context "What changed"` adds guidance, and `--force`
 reviews every translation. Workshop translations include a short AI translation
 note; adjust its policy in `scripts/prompts/workshop-localization.md` if desired.
 
 The updater skips a file only when validation and both English/translation hashes
 match its review receipt. English changes invalidate that group; translation
-edits invalidate that file. Completed reviews survive interruption. Review the
+edits invalidate that file. Game reviews finish before Workshop reviews start so
+listing translations can consult the updated game terminology. Session output is
+grouped by file and shown when each session finishes. Only one updater can run in
+a checkout at a time. On a failed session or validation error, the updater stops
+starting jobs, finishes active reviews, and saves successful results. It adds no
+automatic retries; rerun with fewer jobs after resolving failures or usage limits.
+Ctrl-C stops active sessions; completed reviews survive interruption. Review the
 diff and check fonts/layout in-game before release. Hashes establish review
 freshness, not translation quality. Prompt-policy changes require `--force`.
 

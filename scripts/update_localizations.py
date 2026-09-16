@@ -1,15 +1,20 @@
 """Review stale translations with Codex and persist content-based review receipts."""
 
 import argparse
+from contextlib import contextmanager
+import fcntl
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import shutil
+import signal
 from string import Template
 import subprocess
 import sys
 import tempfile
+import time
 
 from validate_localization import (
     read_table, supported_languages, unique_keys, validate_english_keys,
@@ -23,6 +28,17 @@ SOURCES = {
     "game": "localization/eng.json",
     "workshop": "workshop/localizations/english.json",
 }
+
+
+@contextmanager
+def update_lock(root):
+    # Only one coordinator may edit translations and their shared receipts.
+    with (root / ".localization-update.lock").open("a") as stream:
+        try:
+            fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise ValueError("Another localization update is running in this checkout") from None
+        yield
 
 
 def fingerprint(table):
@@ -122,6 +138,100 @@ def make_prompt(root, scope, target, game, steam, english, context):
     )
 
 
+def review_group(root, args, command, entries, sources, state):
+    """Bound in-flight sessions; only this coordinator validates and saves receipts."""
+    queued = iter(entries)
+    active = {}
+    exhausted = False
+    errors = []
+    try:
+        while active or not exhausted:
+            # Inspect every finished session before filling any newly available slot.
+            for process, (scope, target, output) in list(active.items()):
+                if process.poll() is None:
+                    continue
+                try:
+                    output.seek(0)
+                    print(f"--- {target} ---", flush=True)
+                    shutil.copyfileobj(output, sys.stdout)
+                    sys.stdout.flush()
+                    if process.returncode:
+                        raise ValueError(f"Codex failed for {target} (exit {process.returncode}); "
+                                         "review partial edits before rerunning")
+                    if read_sources(root) != sources:
+                        raise ValueError(f"English changed while reviewing {target}; "
+                                         "no review recorded for this file")
+                    english = sources[scope]
+                    table = read_translation(root, scope, target, english)
+                    state["translations"][target] = {
+                        "english_sha256": fingerprint(english),
+                        "translation_sha256": fingerprint(table),
+                    }
+                    write_state(root, state)
+                    print(f"Reviewed {target}", flush=True)
+                except (ValueError, OSError) as error:
+                    errors.append(str(error))
+                    print(f"{error}; stopping new jobs and finishing active reviews.",
+                          file=sys.stderr, flush=True)
+                finally:
+                    output.close()
+                    del active[process]
+
+            if errors:
+                exhausted = True
+            if not exhausted and len(active) < args.jobs:
+                entry = next(queued, None)
+                if entry is None:
+                    exhausted = True
+                    continue
+                scope, target, game, steam = entry
+                output = tempfile.TemporaryFile(mode="w+", encoding="utf-8", errors="replace")
+                try:
+                    if read_sources(root) != sources:
+                        raise ValueError("English changed during this run; rerun to review the new source")
+                    prompt = make_prompt(root, scope, target, game, steam, sources[scope], args.context)
+                    # A file avoids blocking on a pipe while a child starts up.
+                    with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as input_file:
+                        input_file.write(prompt)
+                        input_file.seek(0)
+                        print(f"Reviewing {target}...", flush=True)
+                        process = subprocess.Popen(command, stdin=input_file, stdout=output,
+                                                   stderr=subprocess.STDOUT, cwd=root,
+                                                   start_new_session=True)
+                        active[process] = (scope, target, output)
+                except (ValueError, OSError) as error:
+                    output.close()
+                    errors.append(str(error))
+                    exhausted = True
+                    print(f"{error}; stopping new jobs and finishing active reviews.",
+                          file=sys.stderr, flush=True)
+                continue
+            if active:
+                time.sleep(0.05)
+        if errors:
+            raise ValueError("\n".join(errors))
+    finally:
+        # Ctrl-C must also stop child tools, not leave background sessions editing files.
+        for process in active:
+            try:
+                os.killpg(process.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+        deadline = time.monotonic() + 5
+        for process, (_, _, output) in active.items():
+            try:
+                process.wait(timeout=max(0, deadline - time.monotonic()))
+            except subprocess.TimeoutExpired:
+                pass
+            finally:
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                process.wait()
+                output.close()
+
+
 def run(root, args):
     catalog = supported_languages(root)
     sources = read_sources(root)  # Fail before model calls if either English source is invalid.
@@ -148,23 +258,13 @@ def run(root, args):
             command.extend(["--model", args.model])
         command.append("-")
 
-    for scope, target, game, steam in pending:
-        english = sources[scope]
-        if read_sources(root) != sources:
-            raise ValueError("English changed during this run; rerun to review the new source")
-        prompt = make_prompt(root, scope, target, game, steam, english, args.context)
-        print(f"Reviewing {target}...", flush=True)
-        result = subprocess.run(command, input=prompt, text=True, encoding="utf-8", cwd=root)
-        if result.returncode:
-            raise ValueError(f"Codex failed for {target}; review partial edits before rerunning")
-        if read_sources(root) != sources:
-            raise ValueError(f"English changed while reviewing {target}; no review recorded for this file")
-        table = read_translation(root, scope, target, english)
-        state["translations"][target] = {
-            "english_sha256": fingerprint(english),
-            "translation_sha256": fingerprint(table),
-        }
-        write_state(root, state)
+    if pending:
+        print(f"Using up to {args.jobs} concurrent Codex sessions. "
+              "Session output is shown on completion.", flush=True)
+        # Workshop prompts consult game translations; finish the entire game phase first.
+        for scope in SOURCES:
+            review_group(root, args, command, [entry for entry in pending if entry[0] == scope],
+                         sources, state)
 
     # Recheck skipped and completed files, including changes made during later reviews.
     final_sources = read_sources(root)
@@ -185,6 +285,16 @@ def nonempty(value):
     return value
 
 
+def positive_int(value):
+    try:
+        number = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError("requires a positive integer") from None
+    if number < 1:
+        raise argparse.ArgumentTypeError("requires a positive integer")
+    return number
+
+
 def main():
     parser = argparse.ArgumentParser(prog="./update-localizations.sh", description=(
         "Review stale in-game and Workshop translations in separate Codex runs, then validate. "
@@ -192,12 +302,17 @@ def main():
     parser.add_argument("--context", type=nonempty, default="No additional release context supplied.",
                         help="extra translation context; use --force to also review current files")
     parser.add_argument("--model", type=nonempty, help="override the configured Codex model")
+    parser.add_argument("--jobs", type=positive_int, default=4, metavar="N",
+                        help="maximum concurrent Codex sessions (default: 4; use 2 or 1 to reduce)")
     parser.add_argument("--force", action="store_true", help="review every non-English translation")
     parser.add_argument("--check", action="store_true",
                         help="validate and report freshness without edits or Codex; exit 1 if review is needed")
     args = parser.parse_args()
     try:
-        return run(ROOT, args)
+        if args.check:
+            return run(ROOT, args)
+        with update_lock(ROOT):
+            return run(ROOT, args)
     except (ValueError, OSError) as error:
         print(f"Localization update failed: {error}", file=sys.stderr)
         return 1
