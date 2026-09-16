@@ -76,7 +76,8 @@ internal sealed class GravityMapView
                 node.Point.coord == run.Map.StartingMapPoint.coord, node is NBossMapPoint);
         }
         var anchor = bodies.Single(body => body.Anchored);
-        _floor = anchor.Position.Y + anchor.Radius + 24f;
+        // Keep the bottom row above the parchment's torn lower edge in every act.
+        _floor = anchor.Position.Y + anchor.Radius - 24f;
         _frames = FallingLayout.Simulate(bodies, anchor.Position.X - 570f, anchor.Position.X + 510f, _floor);
         _top = _frames[^1].Select((position, i) => position.Y - bodies[i].Radius).Min();
         var startTime = AccessTools.Field(typeof(RunManager), "_startTime").GetValue(RunManager.Instance);

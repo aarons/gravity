@@ -28,9 +28,10 @@ var extraVisit = Progress(visits.Append(11).ToArray());
 Check(extraVisit.EncountersVisited == 16 && extraVisit.Available.Contains(100) && !extraVisit.Available.Contains(11),
     "Players can continue exploring beyond the unlock requirement");
 foreach (var requirement in new[] { 0, 1, 15, 60, 99, 999, -1 })
+foreach (var lockEncounters in new[] { false, true })
 {
     var target = requirement == -1 ? 60 : Math.Min(requirement, 60);
-    GravityProgress<int> WithRule(IEnumerable<int> rooms) => new(0, encounters, [100, 101], rooms, requirement);
+    GravityProgress<int> WithRule(IEnumerable<int> rooms) => new(0, encounters, [100, 101], rooms, requirement, lockEncounters);
     Check(WithRule([]).Available.SetEquals([0]), "Even unrestricted runs must start at the Ancient");
     Check(WithRule([0]).RequiredEncounters == target, "All and oversized requirements match the act pool");
     for (var n = 0; n <= 60; n++)
@@ -39,7 +40,9 @@ foreach (var requirement in new[] { 0, 1, 15, 60, 99, 999, -1 })
         var state = WithRule(path);
         Check(state.Available.Contains(100) == (n >= target), "Boss must unlock exactly at the chosen minimum");
         Check(!state.Available.Contains(101), "Second boss stays locked until first boss");
-        Check(state.Available.Intersect(encounters).Count() == 60 - n, "No encounter cap or revisits");
+        var locked = lockEncounters && target > 0 && n >= target;
+        Check(state.Available.Intersect(encounters).Count() == (locked ? 0 : 60 - n),
+            "Optional lock must close encounters at the requirement, except when the boss is always unlocked");
         if (n >= target)
         {
             Check(WithRule(path.Append(100)).Available.SetEquals([101]), "Entering boss closes encounters");

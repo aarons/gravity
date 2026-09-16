@@ -15,8 +15,7 @@ internal static class GravityModSettings
         public required ScrollContainer Scroll;
         public required Control Description;
         public required Control Image;
-        public required Vector2 DescriptionPosition;
-        public required Vector2 DescriptionSize;
+        public required bool DescriptionVisible;
         public required bool ImageVisible;
         public required NModMenuRow Row;
         public required NodePath Right;
@@ -41,20 +40,18 @@ internal static class GravityModSettings
         var binding = new Binding
         {
             Panel = panel, Scroll = scroll, Description = description, Image = image,
-            DescriptionPosition = description.Position, DescriptionSize = description.Size,
+            DescriptionVisible = description.Visible,
             ImageVisible = image.Visible, Row = row, Right = row.FocusNeighborRight, Next = row.FocusNext,
         };
         Bindings.Add(info, binding);
-        // Use the otherwise empty image space for the native description, leaving
-        // the rest of the information panel for settings. Other mods retain the scene layout.
+        // Settings need only their heading; reclaim the image and description space.
         image.Hide();
-        description.Position = new Vector2(25, 110);
-        description.Size = new Vector2(info.Size.X - 50, 190);
+        description.Hide();
         info.AddChild(scroll);
         scroll.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
         scroll.OffsetLeft = 25;
         scroll.OffsetRight = -25;
-        scroll.OffsetTop = 320;
+        scroll.OffsetTop = 110;
         scroll.OffsetBottom = -16;
         scroll.AddChild(panel.Content);
         var controls = panel.FocusControls;
@@ -74,8 +71,7 @@ internal static class GravityModSettings
         binding.Scroll.Hide();
         info.RemoveChild(binding.Scroll);
         binding.Scroll.QueueFree();
-        binding.Description.Position = binding.DescriptionPosition;
-        binding.Description.Size = binding.DescriptionSize;
+        binding.Description.Visible = binding.DescriptionVisible;
         binding.Image.Visible = binding.ImageVisible;
         if (GodotObject.IsInstanceValid(binding.Row))
         {

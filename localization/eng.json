@@ -19,7 +19,7 @@
   "settings.off": "Off",
   "settings.percent": "{0}%",
   "settings.appearance_title": "Gravity appearance",
-  "settings.encounter_hint": "Changes when the boss unlocks. Does not add encounters.",
+  "settings.lock_encounters": "Lock normal encounters once the boss unlocks",
   "settings.encounters_none": "None required, boss is always available",
   "settings.encounters_default": "After 15 encounters - Game default",
   "settings.encounters_all": "After all encounters - A very long playthrough",

@@ -18,9 +18,10 @@ internal static class SettingsTests
         VerifyPreferences();
         var info = JsonSerializationUtility.Options.GetTypeInfo(typeof(SerializableExtraRunFields));
         foreach (var requirement in new[] { -1, 0, 1, 15, 60, 99, 999, 1000 })
+        foreach (var lockEncounters in new[] { false, true })
         {
             var fields = new ExtraRunFields { StartedWithNeow = true, TestSubjectKills = 3, FreedRepy = true };
-            GravityRunSettings.Set(fields, requirement);
+            GravityRunSettings.Set(fields, requirement, lockEncounters);
             var save = fields.ToSerializable();
             var json = JsonSerializer.Serialize(save, info);
             using var document = JsonDocument.Parse(json);
@@ -29,10 +30,14 @@ internal static class SettingsTests
             var restored = (SerializableExtraRunFields)JsonSerializer.Deserialize(json, info)!;
             var loaded = ExtraRunFields.FromSerializable(restored);
             Check(GravityRunSettings.Get(loaded) == requirement, "Requirement must survive native JSON save/load");
+            Check(document.RootElement.GetProperty("gravity_lock_encounters").GetBoolean() == lockEncounters
+                && GravityRunSettings.GetLockEncounters(loaded) == lockEncounters,
+                "Encounter lock must survive native JSON save/load");
             Check(loaded.StartedWithNeow && loaded.TestSubjectKills == 3 && loaded.FreedRepy, "Native extra fields must survive");
             var runJson = JsonSerializationUtility.ToJson(new SerializableRun { ExtraFields = save });
             var runSave = JsonSerializer.Deserialize<SerializableRun>(runJson, JsonSerializationUtility.Options)!;
             Check(GravityRunSettings.Get(runSave.ExtraFields) == requirement, "Full run save dropped its encounter snapshot");
+            Check(GravityRunSettings.GetLockEncounters(runSave.ExtraFields) == lockEncounters, "Full run save dropped its lock snapshot");
 
             var writer = new PacketWriter();
             save.Serialize(writer);
@@ -42,15 +47,18 @@ internal static class SettingsTests
             var network = new SerializableExtraRunFields();
             network.Deserialize(reader);
             Check(GravityRunSettings.Get(network) == requirement && reader.ReadInt() == 123456, "Network round trip lost run settings or packet alignment");
+            Check(GravityRunSettings.GetLockEncounters(network) == lockEncounters, "Network round trip lost encounter lock");
 
             var nextRunRequirement = requirement == 1000 ? 999 : requirement;
             GravitySettings.RestoreEncounterPreferences(nextRunRequirement, true);
+            GravitySettings.LockEncountersAfterBossUnlock = lockEncounters;
             var message = new LobbyBeginRunMessage { playersInLobby = [], modifiers = [], seed = "gravity-test", act1 = "test" };
             writer.Reset();
             message.Serialize(writer);
             writer.WriteInt(654321);
             // The receiving client has its own default before reading the host's message.
             GravitySettings.RestoreEncounterPreferences(9, true);
+            GravitySettings.LockEncountersAfterBossUnlock = !lockEncounters;
             reader.Reset(writer.Buffer);
             var received = new LobbyBeginRunMessage();
             received.Deserialize(reader);
@@ -58,6 +66,7 @@ internal static class SettingsTests
             var copy = received;
             Check(GravityRunSettings.Get(copy.modifiers) == nextRunRequirement && reader.ReadInt() == 654321,
                 "Host's rule must survive lobby message serialization and struct copies");
+            Check(GravityRunSettings.GetLockEncounters(copy.modifiers) == lockEncounters, "Lobby message lost the host's encounter lock");
 
             var lobby = (StartRunLobby)RuntimeHelpers.GetUninitializedObject(typeof(StartRunLobby));
             AccessTools.Field(typeof(StartRunLobby), "<NetService>k__BackingField").SetValue(lobby,
@@ -69,15 +78,28 @@ internal static class SettingsTests
             Check(GravityRunSettings.Get(clientRun.ExtraFields) == nextRunRequirement,
                 "Client initialization must preserve the host's snapshot");
             Check(GravitySettings.NextRunRequirement == 9, "Receiving host settings must not overwrite personal defaults");
+            Check(GravityRunSettings.GetLockEncounters(clientRun.ExtraFields) == lockEncounters
+                && GravitySettings.LockEncountersAfterBossUnlock == !lockEncounters,
+                "Client must use the host's lock without overwriting its personal default");
             var soloRun = NewState();
             GravityRunSettings.Initialize(soloRun);
             Check(GravityRunSettings.Get(soloRun.ExtraFields) == 9, "Next solo run must still use the client's default");
+            Check(GravityRunSettings.GetLockEncounters(soloRun.ExtraFields) == !lockEncounters,
+                "Next solo run must use the client's own lock setting");
 
             GravitySettings.RestoreEncounterPreferences(9, true);
             Check(GravityRunSettings.Get(loaded) == requirement, "Changing defaults must not change an existing run");
+            Check(GravityRunSettings.GetLockEncounters(loaded) == lockEncounters, "Changing defaults must not change an existing lock");
         }
         var legacy = (SerializableExtraRunFields)JsonSerializer.Deserialize("{}", info)!;
         Check(GravityRunSettings.Get(ExtraRunFields.FromSerializable(legacy)) == 15, "Legacy saves retain 15 regardless of current defaults");
+        Check(!GravityRunSettings.GetLockEncounters(ExtraRunFields.FromSerializable(legacy)), "Legacy saves must default to continued exploration");
+        var oldSnapshot = (SerializableExtraRunFields)JsonSerializer.Deserialize("{\"gravity_encounters\":7}", info)!;
+        Check(GravityRunSettings.Get(oldSnapshot) == 7 && !GravityRunSettings.GetLockEncounters(oldSnapshot),
+            "Existing snapshots without the lock must retain their requirement and continued exploration");
+        var reversed = (SerializableExtraRunFields)JsonSerializer.Deserialize("{\"gravity_lock_encounters\":true,\"gravity_encounters\":7}", info)!;
+        Check(GravityRunSettings.Get(reversed) == 7 && GravityRunSettings.GetLockEncounters(reversed),
+            "Snapshot properties must load in either order");
         var invalid = (SerializableExtraRunFields)JsonSerializer.Deserialize("{\"gravity_encounters\":-22}", info)!;
         Check(GravityRunSettings.Get(invalid) == 15, "Invalid saved requirements must fall back safely");
         RunState NewState()
@@ -87,14 +109,18 @@ internal static class SettingsTests
             return state;
         }
         GravitySettings.RestoreEncounterPreferences(7, true);
+        GravitySettings.LockEncountersAfterBossUnlock = true;
         var active = NewState();
         GravityRunSettings.Initialize(active);
         GravitySettings.RestoreEncounterPreferences(11, true);
+        GravitySettings.LockEncountersAfterBossUnlock = false;
         GravityRunSettings.Initialize(active);
         var next = NewState();
         GravityRunSettings.Initialize(next);
         Check(GravityRunSettings.Get(active.ExtraFields) == 7 && GravityRunSettings.Get(next.ExtraFields) == 11,
             "Only a new playthrough should snapshot edited defaults");
+        Check(GravityRunSettings.GetLockEncounters(active.ExtraFields) && !GravityRunSettings.GetLockEncounters(next.ExtraFields),
+            "Only a new playthrough should snapshot an edited encounter lock");
         GravitySettings.RestoreEncounterPreferences(15, true);
         VerifyVersionMatching();
         Console.WriteLine("Passed native JSON, save conversion, network packet, lobby rule, and next-run isolation checks.");
@@ -102,6 +128,7 @@ internal static class SettingsTests
 
     private static void VerifyPreferences()
     {
+        Check(!GravitySettings.LockEncountersAfterBossUnlock, "Encounter locking must default to off");
         Check(GravitySettings.Mode == GravitySettings.EncounterMode.Default
             && GravitySettings.CustomEncounterCount == 15 && GravitySettings.NextRunRequirement == 15,
             "Both the initial selection and custom value must default to 15");

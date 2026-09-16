@@ -13,6 +13,7 @@ internal static class GravitySettings
     public const int DefaultEncounterCount = 15;
     public const int MaxEncounterCount = 999;
     public static EncounterMode Mode { get; set; } = EncounterMode.Default;
+    public static bool LockEncountersAfterBossUnlock { get; set; }
     private static int _customEncounterCount = DefaultEncounterCount;
     public static int CustomEncounterCount
     {
@@ -69,6 +70,8 @@ internal static class GravitySettings
         }
         Hue = ReadInt("hue", DefaultHue, 0, 360);
         PulsePercent = ReadInt("pulse_percent", DefaultPulsePercent, 0, 100);
+        var lockEncounters = config.GetValue("settings", "lock_encounters_after_boss_unlock", false);
+        LockEncountersAfterBossUnlock = lockEncounters.VariantType == Variant.Type.Bool && lockEncounters.AsBool();
         var encounters = ReadInt("encounters", DefaultEncounterCount, -1, 1000);
         var enabled = config.GetValue("settings", "requirement_enabled", true);
         RestoreEncounterPreferences(encounters, enabled.VariantType != Variant.Type.Bool || enabled.AsBool(),
@@ -84,6 +87,7 @@ internal static class GravitySettings
         config.SetValue("settings", "encounters", NextRunRequirement);
         config.SetValue("settings", "encounter_mode", (int)Mode);
         config.SetValue("settings", "custom_encounters", CustomEncounterCount);
+        config.SetValue("settings", "lock_encounters_after_boss_unlock", LockEncountersAfterBossUnlock);
         var error = config.Save(Path);
         if (error != Error.Ok) GD.PushWarning($"[Gravity] Could not save settings: {error}");
         return error;

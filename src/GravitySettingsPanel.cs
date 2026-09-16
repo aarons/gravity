@@ -15,20 +15,26 @@ internal sealed class GravitySettingsPanel
     private readonly Label _error;
     private bool _dirty;
 
-    public GravitySettingsPanel()
+    public GravitySettingsPanel(bool showTitle = true)
     {
         var content = Content;
         content.Theme = GravitySettingsPopup.CreateTheme();
         content.AddThemeConstantOverride("separation", 12);
         content.AddChild(_saveTimer);
+        if (showTitle)
+        {
+            var title = Label(Localize("settings.title"), 32);
+            title.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+            content.AddChild(title);
+        }
         var heading = Label(Localize("settings.encounters"), 26);
         heading.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         content.AddChild(heading);
         var group = new ButtonGroup();
-        CheckBox Option(string text)
+        CheckBox Option(string text, bool independent = false)
         {
             var optionRow = new HBoxContainer();
-            var option = new CheckBox { ButtonGroup = group, CustomMinimumSize = new Vector2(48, 48) };
+            var option = new CheckBox { ButtonGroup = independent ? null : group, CustomMinimumSize = new Vector2(48, 48) };
             StyleButton(option);
             optionRow.AddChild(option);
             var caption = Label(text, 22);
@@ -38,10 +44,10 @@ internal sealed class GravitySettingsPanel
             caption.MouseDefaultCursorShape = Control.CursorShape.PointingHand;
             caption.GuiInput += input =>
             {
-                if (input is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left })
+                if (!option.Disabled && input is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left })
                 {
                     option.GrabFocus();
-                    option.ButtonPressed = true;
+                    option.ButtonPressed = !independent || !option.ButtonPressed;
                     caption.AcceptEvent();
                 }
             };
@@ -74,9 +80,7 @@ internal sealed class GravitySettingsPanel
         var customHint = Label(Localize("settings.custom_hint"), 20, "C4CCD1");
         customHint.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         content.AddChild(customHint);
-        var hint = Label(Localize("settings.encounter_hint"), 20, "C4CCD1");
-        hint.AutowrapMode = TextServer.AutowrapMode.WordSmart;
-        content.AddChild(hint);
+        var lockEncounters = Option(Localize("settings.lock_encounters"), independent: true);
         var guidance = Label(Localize("settings.next_run"), 20, "C4CCD1");
         guidance.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         content.AddChild(guidance);
@@ -93,6 +97,11 @@ internal sealed class GravitySettingsPanel
             if (!custom.ButtonPressed && (number.HasFocus() || minus.HasFocus() || plus.HasFocus()))
                 none.GrabFocus();
             row.Visible = customHint.Visible = custom.ButtonPressed;
+            lockEncounters.SetPressedNoSignal(GravitySettings.LockEncountersAfterBossUnlock);
+            lockEncounters.Disabled = GravitySettings.NextRunRequirement == 0;
+            if (lockEncounters.Disabled && lockEncounters.HasFocus()) none.GrabFocus();
+            lockEncounters.FocusMode = lockEncounters.Disabled ? Control.FocusModeEnum.None : Control.FocusModeEnum.All;
+            lockEncounters.GetParent<Control>().Modulate = new Color(1f, 1f, 1f, lockEncounters.Disabled ? 0.45f : 1f);
             refreshCustomFocus?.Invoke();
         }
         void SetNumber(int value)
@@ -121,6 +130,11 @@ internal sealed class GravitySettingsPanel
         normal.Toggled += selected => { if (selected) Select(GravitySettings.EncounterMode.Default); };
         all.Toggled += selected => { if (selected) Select(GravitySettings.EncounterMode.All); };
         custom.Toggled += selected => { if (selected) Select(GravitySettings.EncounterMode.Custom); };
+        lockEncounters.Toggled += selected =>
+        {
+            GravitySettings.LockEncountersAfterBossUnlock = selected;
+            Changed();
+        };
         number.TextChanged += _ => editing = true;
         number.TextSubmitted += _ => Commit();
         number.FocusExited += Commit;
@@ -128,44 +142,6 @@ internal sealed class GravitySettingsPanel
         minus.Pressed += () => { Commit(); SetNumber(GravitySettings.CustomEncounterCount - 1); };
         plus.Pressed += () => { Commit(); SetNumber(GravitySettings.CustomEncounterCount + 1); };
         Refresh();
-        content.AddChild(new HSeparator());
-        var colorHeading = new HBoxContainer();
-        var colorTitle = Label(Localize("settings.color"), 26);
-        colorTitle.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-        colorHeading.AddChild(colorTitle);
-        var reset = new Button { Text = Localize("settings.reset_color") };
-        StyleButton(reset);
-        colorHeading.AddChild(reset);
-        content.AddChild(colorHeading);
-        var hue = Slider(0, 360, GravitySettings.Hue);
-        StyleColorSlider(hue);
-        content.AddChild(hue);
-        var pulseHeading = new HBoxContainer();
-        var pulseTitle = Label(Localize("settings.pulse"), 26);
-        pulseTitle.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-        pulseHeading.AddChild(pulseTitle);
-        var pulseValue = Label("", 22);
-        pulseHeading.AddChild(pulseValue);
-        content.AddChild(pulseHeading);
-        var pulse = Slider(0, 100, GravitySettings.PulsePercent);
-        content.AddChild(pulse);
-        void RefreshPulse() => pulseValue.Text = GravitySettings.PulsePercent == 0 ? Localize("settings.off")
-            : string.Format(Localize("settings.percent"), GravitySettings.PulsePercent);
-        hue.ValueChanged += value =>
-        {
-            GravitySettings.Hue = (int)value;
-            GravitySettings.RefreshAppearance();
-            Changed();
-        };
-        reset.Pressed += () => hue.Value = GravitySettings.DefaultHue;
-        pulse.ValueChanged += value =>
-        {
-            GravitySettings.PulsePercent = (int)value;
-            RefreshPulse();
-            GravitySettings.RefreshAppearance();
-            Changed();
-        };
-        RefreshPulse();
         _error = Label("", 20, "FFAE94");
         _error.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         _error.Hide();
@@ -176,16 +152,15 @@ internal sealed class GravitySettingsPanel
         {
             if (!content.IsVisibleInTree()) { Flush(); return; }
             Refresh();
-            hue.SetValueNoSignal(GravitySettings.Hue);
-            pulse.SetValueNoSignal(GravitySettings.PulsePercent);
-            RefreshPulse();
         };
-        FocusControls = [none, normal, all, custom, minus, number, plus, reset, hue, pulse];
-        // Relink only the custom section so host focus links at the panel edges survive.
+        FocusControls = [none, normal, all, custom, minus, number, plus, lockEncounters];
+        // Skip hidden custom controls while preserving host links at the panel edges.
+        // Godot skips the lock checkbox when its FocusMode is None.
         void LinkCustomFocus()
         {
-            custom.FocusNext = custom.FocusNeighborBottom = custom.GetPathTo(custom.ButtonPressed ? minus : reset);
-            reset.FocusPrevious = reset.FocusNeighborTop = reset.GetPathTo(custom.ButtonPressed ? plus : custom);
+            Control beforeLock = custom.ButtonPressed ? plus : custom;
+            custom.FocusNext = custom.FocusNeighborBottom = custom.GetPathTo(custom.ButtonPressed ? minus : lockEncounters);
+            lockEncounters.FocusPrevious = lockEncounters.FocusNeighborTop = lockEncounters.GetPathTo(beforeLock);
         }
         // Paths can only be assigned once this panel is attached to its host.
         content.Ready += () =>

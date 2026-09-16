@@ -10,7 +10,7 @@ internal sealed class GravityProgress<T> where T : notnull
     public bool Started { get; }
 
     public GravityProgress(T start, IReadOnlyList<T> encounters, IReadOnlyList<T> bosses,
-        IEnumerable<T> visited, int requiredEncounters = 15)
+        IEnumerable<T> visited, int requiredEncounters = 15, bool lockEncountersAfterBossUnlock = false)
     {
         var total = encounters.Distinct().Count();
         RequiredEncounters = requiredEncounters == -1 ? total : Math.Clamp(requiredEncounters, 0, total);
@@ -22,7 +22,9 @@ internal sealed class GravityProgress<T> where T : notnull
             Available.Add(start);
         else
         {
-            if (!bosses.Any(Visited.Contains))
+            var encountersLocked = lockEncountersAfterBossUnlock && RequiredEncounters > 0
+                && EncountersVisited >= RequiredEncounters;
+            if (!bosses.Any(Visited.Contains) && !encountersLocked)
                 Available.UnionWith(encounters.Where(point => !Visited.Contains(point)));
             if (EncountersVisited >= RequiredEncounters)
             {

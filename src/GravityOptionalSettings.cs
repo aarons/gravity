@@ -104,6 +104,7 @@ internal static class GravityOptionalSettings
         var dynamicText = text.GetMethod("Dynamic", [typeof(Func<string>)])!;
         object Title() => dynamicText.Invoke(null, [(Func<string>)(() => Localize("settings.title"))])!;
         withTitle.Invoke(page, [Title()]);
+        page.GetType().GetMethod("WithDescriptionHidden", [typeof(bool)])!.Invoke(page, [true]);
         page.GetType().GetMethod("WithModDisplayName")!.Invoke(page,
             [text.GetMethod("Literal")!.Invoke(null, [ModId])]);
         var section = page.GetType().GetMethod("AddSection")!;
@@ -111,7 +112,7 @@ internal static class GravityOptionalSettings
         {
             var custom = builder.GetType().GetMethod("AddCustom")!;
             // Func<object, Control> is contravariant and accepts the library's UI host.
-            Func<object, Control> create = _ => new GravitySettingsPanel().Content;
+            Func<object, Control> create = _ => new GravitySettingsPanel(showTitle: false).Content;
             var factory = Delegate.CreateDelegate(custom.GetParameters()[2].ParameterType, create.Target, create.Method);
             InvokeWithDefaults(custom, builder, "gravity_settings", Title(), factory);
         })]);

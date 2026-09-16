@@ -19,7 +19,8 @@ internal static class GravityRules
         Encounters(run.Map).Select(point => point.coord).ToArray(),
         run.Map.SecondBossMapPoint is { } second
             ? [run.Map.BossMapPoint.coord, second.coord] : [run.Map.BossMapPoint.coord],
-        run.VisitedMapCoords, GravityRunSettings.Get(run.ExtraFields));
+        run.VisitedMapCoords, GravityRunSettings.Get(run.ExtraFields),
+        GravityRunSettings.GetLockEncounters(run.ExtraFields));
 
     public static int VisitIndex(RunState run, MapCoord coord)
     {

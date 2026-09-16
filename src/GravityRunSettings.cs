@@ -14,19 +14,22 @@ namespace Gravity;
 // canonicalization, cloud sync, replays, and multiplayer reconnects.
 internal static class GravityRunSettings
 {
-    private sealed record Rule(int Requirement);
+    private sealed record Rule(int Requirement, bool LockEncounters);
     private static readonly ConditionalWeakTable<object, Rule> Rules = new();
     public static int Get(object? owner) => owner != null && Rules.TryGetValue(owner, out var rule) ? rule.Requirement : 15;
-    public static void Set(object owner, int value)
+    public static bool GetLockEncounters(object? owner) => owner != null
+        && Rules.TryGetValue(owner, out var rule) && rule.LockEncounters;
+    public static void Set(object owner, int value, bool lockEncounters = false)
     {
         Rules.Remove(owner);
-        Rules.Add(owner, new Rule(value is >= -1 and <= 1000 ? value : 15));
+        Rules.Add(owner, new Rule(value is >= -1 and <= 1000 ? value : 15, lockEncounters));
     }
     public static void Initialize(RunState run)
     {
-        if (!Rules.TryGetValue(run.ExtraFields, out _)) Set(run.ExtraFields, GravitySettings.NextRunRequirement);
+        if (!Rules.TryGetValue(run.ExtraFields, out _))
+            Set(run.ExtraFields, GravitySettings.NextRunRequirement, GravitySettings.LockEncountersAfterBossUnlock);
     }
-    public static void Copy(object source, object destination) => Set(destination, Get(source));
+    public static void Copy(object source, object destination) => Set(destination, Get(source), GetLockEncounters(source));
 }
 
 [HarmonyPatch(typeof(RunManager), "InitializeNewRun")]
@@ -55,21 +58,30 @@ internal static class RunSettingsJsonPatch
         if (info.Type != typeof(SerializableExtraRunFields)) return;
         var property = info.CreateJsonPropertyInfo(typeof(int), "gravity_encounters");
         property.Get = owner => GravityRunSettings.Get(owner);
-        property.Set = (owner, value) => GravityRunSettings.Set(owner, (int)value!);
+        property.Set = (owner, value) => GravityRunSettings.Set(owner, (int)value!, GravityRunSettings.GetLockEncounters(owner));
         info.Properties.Add(property);
+        var lockProperty = info.CreateJsonPropertyInfo(typeof(bool), "gravity_lock_encounters");
+        lockProperty.Get = owner => GravityRunSettings.GetLockEncounters(owner);
+        lockProperty.Set = (owner, value) => GravityRunSettings.Set(owner, GravityRunSettings.Get(owner), (bool)value!);
+        info.Properties.Add(lockProperty);
     }
 }
 
 [HarmonyPatch(typeof(SerializableExtraRunFields), nameof(SerializableExtraRunFields.Serialize))]
 internal static class RunSettingsPacketWritePatch
 {
-    private static void Postfix(SerializableExtraRunFields __instance, PacketWriter writer) => writer.WriteInt(GravityRunSettings.Get(__instance));
+    private static void Postfix(SerializableExtraRunFields __instance, PacketWriter writer)
+    {
+        writer.WriteInt(GravityRunSettings.Get(__instance));
+        writer.WriteBool(GravityRunSettings.GetLockEncounters(__instance));
+    }
 }
 
 [HarmonyPatch(typeof(SerializableExtraRunFields), nameof(SerializableExtraRunFields.Deserialize))]
 internal static class RunSettingsPacketReadPatch
 {
-    private static void Postfix(SerializableExtraRunFields __instance, PacketReader reader) => GravityRunSettings.Set(__instance, reader.ReadInt());
+    private static void Postfix(SerializableExtraRunFields __instance, PacketReader reader) =>
+        GravityRunSettings.Set(__instance, reader.ReadInt(), reader.ReadBool());
 }
 
 // The host's choice travels with the start message, before any client creates its run.
@@ -77,13 +89,18 @@ internal static class RunSettingsPacketReadPatch
 [HarmonyPatch(typeof(LobbyBeginRunMessage), nameof(LobbyBeginRunMessage.Serialize))]
 internal static class LobbySettingsWritePatch
 {
-    private static void Postfix(PacketWriter writer) => writer.WriteInt(GravitySettings.NextRunRequirement);
+    private static void Postfix(PacketWriter writer)
+    {
+        writer.WriteInt(GravitySettings.NextRunRequirement);
+        writer.WriteBool(GravitySettings.LockEncountersAfterBossUnlock);
+    }
 }
 
 [HarmonyPatch(typeof(LobbyBeginRunMessage), nameof(LobbyBeginRunMessage.Deserialize))]
 internal static class LobbySettingsReadPatch
 {
-    private static void Postfix(LobbyBeginRunMessage __instance, PacketReader reader) => GravityRunSettings.Set(__instance.modifiers, reader.ReadInt());
+    private static void Postfix(LobbyBeginRunMessage __instance, PacketReader reader) =>
+        GravityRunSettings.Set(__instance.modifiers, reader.ReadInt(), reader.ReadBool());
 }
 
 [HarmonyPatch(typeof(StartRunLobby), "HandleLobbyBeginRunMessage")]
@@ -99,6 +116,6 @@ internal static class MultiplayerRunSettingsPatch
     {
         if (lobby.NetService.Type == MegaCrit.Sts2.Core.Multiplayer.Game.NetGameType.Client)
             GravityRunSettings.Copy(lobby, state.ExtraFields);
-        else GravityRunSettings.Set(state.ExtraFields, GravitySettings.NextRunRequirement);
+        else GravityRunSettings.Set(state.ExtraFields, GravitySettings.NextRunRequirement, GravitySettings.LockEncountersAfterBossUnlock);
     }
 }
