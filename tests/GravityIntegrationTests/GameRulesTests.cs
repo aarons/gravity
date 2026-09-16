@@ -18,6 +18,7 @@ internal static class GameRulesTests
         var map = new TestMap();
         run.Map = map;
         AccessTools.Property(typeof(RunState), nameof(RunState.ExtraFields)).SetValue(run, new ExtraRunFields());
+        GravityRunSettings.Initialize(run);
         var first = MapTravel.GetTravelablePointsFrom(run, map.StartingMapPoint).ToArray();
         Check(first.SequenceEqual([map.StartingMapPoint]), "Patched API must require the Ancient");
         run.AddVisitedMapCoord(map.StartingMapPoint.coord);

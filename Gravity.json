@@ -2,7 +2,7 @@
   "id": "Gravity",
   "name": "Gravity",
   "author": "Laethos",
-  "description": "Encounters fall into a pile. Visit the starting Ancient, choose any 15 encounters, then face the boss.",
+  "description": "Cut loose and hang low. Encounters fall into a pile: choose any 15 to unlock the boss, then fight it or keep exploring.",
   "version": "0.1.0",
   "has_pck": false,
   "has_dll": true,

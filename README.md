@@ -8,16 +8,19 @@ fall into a compact pile around the starting Ancient.
 - The starting Ancient stays in its original position and must be visited first.
 - Then choose **any unvisited encounter**, in any order. Visited encounters
   stay visible in the pile and cannot be selected again.
-- By default, the boss unlocks after **15 encounters**, and normal encounters
-  lock so you must face the boss. Turn off encounter locking in settings to keep
-  exploring after unlocking it. Entering the boss ends ordinary encounter selection.
+- By default, the boss unlocks after **15 encounters**. Face it then or keep
+  exploring for as long as there are unvisited encounters. Enable encounter locking
+  in settings to stop exploring once the boss unlocks.
+  Entering the boss ends ordinary encounter selection.
   Double-boss acts retain their second boss, which unlocks after the first.
   Each act starts a fresh count.
-- On the first map opening, encounters fall with a simple circle collision
+- On the first unobstructed map opening, encounters fall with a simple circle collision
   simulation. Bosses descend into a separate row above the pile and stay there;
   they never collide with ordinary encounters. Everything settles in about four
-  seconds; selection waits until the pile settles. Closing the map early finishes
-  the fall. Reopening keeps the settled positions.
+  seconds; selection waits until the pile settles. The fall waits for the map to
+  fade in and pauses while another screen covers it, including mod selection pages.
+  Closing before the fall starts keeps it pending. Closing during visible playback
+  finishes the fall; reopening keeps the settled positions.
 - The map scrolls only across the compact pile. Directional controller navigation
   follows the new positions. The status bar's stairs indicator shows encounter
   progress in place of total floors climbed, both on the map and in rooms.
@@ -74,7 +77,7 @@ The custom field and its indented capping explanation appear only with Custom
 selected: **Setting the number higher than available encounters won't add more,
 it will just require all of them to be visited.**
 
-- **Lock normal encounters once the boss unlocks:** On by default. When enabled,
+- **Lock normal encounters once the boss unlocks:** Off by default. When enabled,
   reaching the required count leaves only the boss selectable. The checkbox is
   disabled and has no effect with **None required, boss is always available**
   (including a custom count of 0). Switching back to a requirement remembers the
@@ -140,6 +143,10 @@ In-game acceptance checks:
    room enters. Close early and reopen: both the pile and boss row should be settled.
    In each act, check that the bottom encounter row stays above the parchment's
    torn lower edge.
+   With Hextech Runes, finish the post-Ancient selections before viewing the map:
+   the full fall should still play. Check brief map opens between selection pages,
+   covering the map partway through the fall, and saving/reloading before playback:
+   unseen animation should remain pending, and covered animation should pause.
 2. Visit the Ancient. Choose rooms from different original rows, including a
    top-row room early. The boss stays locked and each floor advances by one.
 3. Reopen and save/reload. The pile and visited rooms should stay fixed; unknown
@@ -153,10 +160,11 @@ In-game acceptance checks:
    continuing counterclockwise around the bottom and ending to its right.
    Complete 15: the map opens on
    the boss row and the available boss has a steady gold ring. Unvisited ordinary
-   encounters become dim and unselectable with the default encounter lock enabled.
-   The completed counter should use the chosen highlight color. With locking off
-   in a separate run, visit more encounters and check that it stays at `15/15`
-   with the full ring. Change the highlight color and reset to gold: the completed
+   encounters remain selectable by default. Visit more encounters and check that
+   the counter stays at `15/15` with the full ring and chosen highlight color.
+   With encounter locking enabled in a separate run, unvisited ordinary encounters
+   should become dim and unselectable when the boss unlocks.
+   Change the highlight color and reset to gold: the completed
    counter should update immediately, including in rooms and after reloading.
    In a double-boss act, the second stays dim with its lock until the first is
    visited. Check that the next act resets progress to `0/15` and its normal text color.
@@ -200,7 +208,9 @@ In-game acceptance checks:
    reconnect. Check that the client's next solo run still uses their own default, appearance settings
    remain independent, and a mismatched Gravity version is rejected on connection.
 10. With fresh preferences, verify **Lock normal encounters once the boss unlocks**
-    is enabled in each configuration panel. Start a new run and verify normal encounters remain selectable before
+    is unchecked in each configuration panel and the requirement is 15. Start a new
+    run and verify normal encounters remain selectable after the boss unlocks.
+    Enable locking and start another new run: normal encounters should remain selectable before
     the requirement, then become dim and unselectable exactly when the boss
     unlocks, with mouse, controller, and co-op votes. Save/reload and advance acts
     to check the rule persists and the count resets. Double bosses stay sequential.

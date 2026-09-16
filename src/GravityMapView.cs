@@ -4,7 +4,10 @@ using System.Text;
 using Godot;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Map;
+using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.Screens.Map;
+using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;
+using MegaCrit.Sts2.Core.Nodes.Screens.ScreenContext;
 using MegaCrit.Sts2.Core.Runs;
 using Vec = System.Numerics.Vector2;
 
@@ -19,6 +22,7 @@ internal sealed class GravityMapView
     private readonly RunState _run;
     private readonly NMapPoint[] _nodes;
     private readonly Control _container;
+    private readonly Control _points;
     private readonly GravityProgressDisplay _progressDisplay;
     private readonly Vec[][] _frames;
     private readonly Vector2[] _centerOffsets;
@@ -26,8 +30,8 @@ internal sealed class GravityMapView
     private readonly float _floor;
     private readonly float _top;
     private bool _opened;
-    private float _elapsed;
-    public bool Falling { get; private set; }
+    private FallingPlayback? _playback;
+    public bool Falling => _playback is { Completed: false };
     public float MinScroll => _screen.Size.Y - 100f - _floor;
     public float MaxScroll => Math.Max(MinScroll, 160f - _top);
 
@@ -57,6 +61,7 @@ internal sealed class GravityMapView
         _screen = screen;
         _run = run;
         _container = screen.GetNode<Control>("TheMap");
+        _points = screen.GetNode<Control>("TheMap/Points");
         _nodes = points.Values.OrderBy(node => node.Point.coord.row).ThenBy(node => node.Point.coord.col).ToArray();
         _centerOffsets = new Vector2[_nodes.Length];
         var bodies = new FallingLayout.Body[_nodes.Length];
@@ -101,14 +106,10 @@ internal sealed class GravityMapView
     {
         if (!_opened)
         {
-            Falling = !ViewedMaps.HasSectionKey("viewed", _key);
+            _playback = new FallingPlayback(ViewedMaps.HasSectionKey("viewed", _key));
             _opened = true;
-            ViewedMaps.SetValue("viewed", _key, true);
-            // This is presentation state only; encounter progress is in the normal run save.
-            var error = ViewedMaps.Save("user://gravity_viewed_maps.cfg");
-            if (error != Error.Ok) GD.PushWarning($"[Gravity] Could not save viewed map state: {error}");
         }
-        ApplyFrame(Falling ? 0 : FallingLayout.Steps);
+        ApplyFrame(_playback!.Frame);
         _screen.GetNode<NMapMarker>("TheMap/MapMarker").ResetMapPoint();
         if (!Falling) RefreshMarker();
         var progress = GravityRules.Progress(_run);
@@ -123,29 +124,41 @@ internal sealed class GravityMapView
 
     public void Process(double delta)
     {
-        if (!_screen.IsOpen) return;
+        if (!_opened) return;
         if (Falling)
         {
-            _elapsed += (float)Math.Min(delta, 0.1) * 2f;
-            var frame = Math.Min(FallingLayout.Steps, (int)(_elapsed / FallingLayout.StepSeconds));
-            ApplyFrame(frame);
-            if (frame == FallingLayout.Steps)
-            {
-                Falling = false;
-                RefreshMarker();
-                UpdateNavigation();
-                UpdateStatus();
-            }
+            _playback!.Process(delta, CanSeeMap());
+            ApplyFrame(_playback.Frame);
+            if (!Falling) CompletePlayback();
         }
+        if (!_screen.IsOpen) return;
         _progressDisplay.UpdatePositions();
     }
 
+    private bool CanSeeMap() => _screen.IsOpen && _screen.IsVisibleInTree()
+        && ActiveScreenContext.Instance.IsCurrent(_screen)
+        && NGame.Instance?.Transition?.InTransition != true
+        && _container.Modulate.A >= 0.99f && _points.Modulate.A >= 0.99f
+        // The game's active context prioritizes the map even when a mod shows an overlay.
+        && !(NOverlayStack.Instance?.Peek() is Control overlay && overlay.IsVisibleInTree());
+
     public void Finish()
     {
-        if (!_opened) return;
-        Falling = false;
-        ApplyFrame(FallingLayout.Steps);
+        if (!Falling) return;
+        _playback!.Close(CanSeeMap());
+        if (!Falling) CompletePlayback();
+    }
+
+    private void CompletePlayback()
+    {
+        ApplyFrame(_playback!.Frame);
+        RefreshMarker();
         UpdateNavigation();
+        UpdateStatus();
+        ViewedMaps.SetValue("viewed", _key, true);
+        // This is presentation state only; encounter progress is in the normal run save.
+        var error = ViewedMaps.Save("user://gravity_viewed_maps.cfg");
+        if (error != Error.Ok) GD.PushWarning($"[Gravity] Could not save viewed map state: {error}");
     }
 
     private void RefreshMarker()
