@@ -3,7 +3,7 @@
   "name": "Gravity",
   "author": "Laethos",
   "description": "Cut loose and hang low. Encounters fall into a pile: choose any 15 to unlock the boss, then fight it or keep exploring.",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "has_pck": false,
   "has_dll": true,
   "dependencies": [],

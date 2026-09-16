@@ -1,6 +1,6 @@
 {
   "visibility": "private",
-  "changeNote": "0.1.0\n\nThe Spire has let itself go. Welcome to Gravity!\n\n- Encounters tumble into a pile. Choose them in any order, with no paths to follow.\n- Visit 15 encounters to unlock the boss, then fight it or keep exploring.\n- Make the pile your own with configurable encounter requirements, optional limits, highlight colors, and pulse strength.\n\n────────────────────\n\n高塔躺平了。欢迎来到 Gravity！\n\n- 遭遇落成一堆，想先去哪个就去哪个，不必再沿着路线走。\n- 完成15次遭遇即可解锁首领，随后可以挑战首领，也可以继续探索。\n- 自由调整遭遇数量要求、可选的遭遇上限、高亮颜色和脉动强度，玩出自己的风格。",
+  "changeNote": "1.0.0\n\nThe Spire has let itself go. Welcome to Gravity!\n\n- Encounters tumble into a pile. Choose them in any order, with no paths to follow.\n- Visit 15 encounters to unlock the boss, then fight it or keep exploring.\n- Make the pile your own with configurable encounter requirements, optional limits, highlight colors, and pulse strength.\n\n────────────────────\n\n高塔躺平了。欢迎来到 Gravity！\n\n- 遭遇落成一堆，想先去哪个就去哪个，不必再沿着路线走。\n- 完成15次遭遇即可解锁首领，随后可以挑战首领，也可以继续探索。\n- 自由调整遭遇数量要求、可选的遭遇上限、高亮颜色和脉动强度，玩出自己的风格。",
   "tags": [],
   "dependencies": [],
   "contentDescriptors": []
