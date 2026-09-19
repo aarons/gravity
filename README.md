@@ -2,6 +2,8 @@
 
 A gameplay mod for Slay the Spire 2.
 
+**Requires game v0.107.1 or later.**
+
 Encounters fall into a pile. There are no paths to follow so they can be chosen
 in any order. After 15 encounters (configurable) the boss is unlocked. Have fun!
 
@@ -113,6 +115,24 @@ assemblies, including its bundled Harmony; no separate Harmony mod, BaseLib,
 RitsuLib, or asset pack is required. The mod is marked `affects_gameplay: true`.
 
 ## Development status and compatibility
+
+The original release was tested on public beta **v0.111.0** (32 patches). On
+stable **v0.107.1**, it failed during initialization because the Mods panel has
+no `NModInfoContainer.Clear` method. That cleanup patch is now conditional;
+row changes still clean up Gravity's settings panel on both branches.
+
+The compatibility build passes all 31 applicable patches and the travel,
+save/load, packet, lobby-settings, and optional-settings checks on stable
+**v0.107.1**. The beta-only native handshake comparison test is explicitly
+skipped on stable. Startup, the Mods settings panel, and map behavior have also
+been confirmed in-game on stable. A beta recheck of this build is still pending.
+Earlier game versions have not been verified.
+
+If the game reports that Gravity's DLL assembly failed to initialize, check the
+game version and the exception in `SlayTheSpire2/logs/godot.log`. This message
+can result from a failed Harmony patch, but does not identify the cause itself.
+Stable compatibility can be checked without booting the game by running
+`GravityIntegrationTests` against its assemblies with the `Sts2DataDir` override.
 
 This is an initial implementation. Offline progression/physics tests and patch
 installation checks are provided below. In-game visual and full-run validation

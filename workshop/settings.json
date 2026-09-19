@@ -1,6 +1,6 @@
 {
   "visibility": "private",
-  "changeNote": "1.0.0\n\nThe Spire has let itself go. Welcome to Gravity!\n\n- Encounters fall into a pile. Choose them in any order, with no paths to follow.\n- Unlock the boss after 15 encounters, or set your own requirement in settings.\n\n────────────────────\n\n高塔躺平了。欢迎来到 Gravity！\n\n- 遭遇落成一堆，想先去哪个就去哪个，不必再沿着路线走。\n- 完成15次遭遇即可解锁首领，也可在设置中自定义所需次数。",
+  "changeNote": "1.0.2\n\nImproved the mod description.\n\n────────────────────\n\n优化了模组介绍。",
   "tags": [],
   "dependencies": [],
   "contentDescriptors": []

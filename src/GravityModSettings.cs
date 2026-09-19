@@ -89,8 +89,10 @@ internal static class GravityModSettingsEntryPatch
     private static void Postfix(NModdingScreen __instance, NModMenuRow row) => GravityModSettings.Select(__instance, row);
 }
 
-[HarmonyPatch(typeof(NModInfoContainer), nameof(NModInfoContainer.Clear))]
+[HarmonyPatch(typeof(NModInfoContainer), "Clear")]
 internal static class GravityModSettingsClearPatch
 {
+    // Stable v0.107.1 has no Clear method; row changes already clean up above.
+    private static bool Prepare() => AccessTools.Method(typeof(NModInfoContainer), "Clear") != null;
     private static void Prefix(NModInfoContainer __instance) => GravityModSettings.Clear(__instance);
 }

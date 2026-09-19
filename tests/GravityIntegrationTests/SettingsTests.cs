@@ -173,15 +173,28 @@ internal static class SettingsTests
 
     private static void VerifyVersionMatching()
     {
+        var peerType = typeof(ConnectionFailureExtraInfo).Assembly
+            .GetType("MegaCrit.Sts2.Core.Multiplayer.PeerVersionInfo");
+        if (peerType == null)
+        {
+            Console.WriteLine("Skipped beta-only native co-op version comparison: this game uses the older handshake API.");
+            return;
+        }
         foreach (var remoteMods in new List<string>[] { ["Gravity-0.1.0"], ["Gravity-0.2.0"], [] })
         {
-            var local = new PeerVersionInfo { version = "0.111.0", gameplayAffectingMods = ["Gravity-0.1.0"] };
-            var remote = new PeerVersionInfo { version = local.version, gameplayAffectingMods = remoteMods };
+            dynamic local = Activator.CreateInstance(peerType)!;
+            local.version = "0.111.0";
+            local.gameplayAffectingMods = new List<string> { "Gravity-0.1.0" };
+            dynamic remote = Activator.CreateInstance(peerType)!;
+            remote.version = local.version;
+            remote.gameplayAffectingMods = remoteMods;
             // HandshakeManager rejects the peer with ModMismatch when either of
             // these native comparisons finds a missing gameplay mod. Exercise
             // the comparison without initializing Godot's native network/logger.
-            var comparison = new ConnectionFailureExtraInfo { localInfo = local, remoteInfo = remote };
-            var matches = remoteMods.SequenceEqual(local.gameplayAffectingMods);
+            dynamic comparison = new ConnectionFailureExtraInfo();
+            comparison.localInfo = local;
+            comparison.remoteInfo = remote;
+            var matches = remoteMods.SequenceEqual(new[] { "Gravity-0.1.0" });
             Check((comparison.GetMissingModsOnLocal(false).Count == 0
                 && comparison.GetMissingModsOnRemote(false).Count == 0) == matches,
                 "The game's co-op mod comparison must reject missing or mismatched Gravity versions");
