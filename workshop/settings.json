@@ -1,6 +1,6 @@
 {
   "visibility": "public",
-  "changeNote": "1.0.3\n\nIn new co-op runs, clients now use their own encounter settings if the host's settings are unavailable, instead of falling back to 15 encounters. Received host settings still take priority.\n\n────────────────────\n\n新建联机游戏时，若无法获取房主设置，客户端现在会使用自己的遭遇设置，而不再默认要求完成15次遭遇。成功接收的房主设置仍然优先。",
+  "changeNote": "1.0.4\n\nAdded support for acts with three or more bosses. Bosses unlock in sequence, wrap into additional rows as needed, and the map scrolls to the available boss.\n\n────────────────────\n\n现在支持包含三个或更多Boss的章节。Boss会依次解锁，数量较多时会自动分行排列，地图会滚动到当前可挑战的Boss。",
   "tags": [],
   "dependencies": [],
   "contentDescriptors": []

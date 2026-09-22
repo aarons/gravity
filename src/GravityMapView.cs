@@ -49,6 +49,7 @@ internal sealed class GravityMapView
         Views.Remove(screen);
         if (GravityRules.Applies(run))
         {
+            GravityRules.RegisterBosses(run.Map, points.Values.Select(node => node.Point));
             var view = new GravityMapView(screen, run, seed, points);
             Views.Add(screen, view);
             if (screen.IsOpen) view.Open();
@@ -68,7 +69,7 @@ internal sealed class GravityMapView
         for (var i = 0; i < _nodes.Length; i++)
         {
             var node = _nodes[i];
-            if (node is NBossMapPoint)
+            if (node.Point.PointType == MapPointType.Boss)
             {
                 node.PivotOffset = node.Size * 0.5f;
                 node.Scale = Vector2.One * 0.65f;
@@ -76,9 +77,9 @@ internal sealed class GravityMapView
             _centerOffsets[i] = node.Size * 0.5f;
             var center = node.Position + _centerOffsets[i];
             var radius = Math.Max(node.Size.X, node.Size.Y) * node.Scale.X * 0.5f
-                + (node is NBossMapPoint ? 32f : 12f);
+                + (node.Point.PointType == MapPointType.Boss ? 32f : 12f);
             bodies[i] = new FallingLayout.Body(new Vec(center.X, center.Y), radius,
-                node.Point.coord == run.Map.StartingMapPoint.coord, node is NBossMapPoint);
+                node.Point.coord == run.Map.StartingMapPoint.coord, node.Point.PointType == MapPointType.Boss);
         }
         var anchor = bodies.Single(body => body.Anchored);
         // Keep the bottom row above the parchment's torn lower edge in every act.
@@ -95,7 +96,7 @@ internal sealed class GravityMapView
             _loaded = true;
         }
         _progressDisplay = new GravityProgressDisplay(_nodes.Select((node, i) =>
-            (Node: node, Radius: bodies[i].Radius - 12f)).Where(item => item.Node is NBossMapPoint));
+            (Node: node, Radius: bodies[i].Radius - 12f)).Where(item => item.Node.Point.PointType == MapPointType.Boss));
         GravitySettings.AppearanceChanged += UpdateStatus;
         screen.TreeExiting += UnsubscribeAppearance;
     }
@@ -113,8 +114,11 @@ internal sealed class GravityMapView
         _screen.GetNode<NMapMarker>("TheMap/MapMarker").ResetMapPoint();
         if (!Falling) RefreshMarker();
         var progress = GravityRules.Progress(_run);
-        SetScroll(!Falling && _nodes.Any(node => node is NBossMapPoint
-            && progress.Available.Contains(node.Point.coord)) ? MaxScroll : MinScroll);
+        var availableBoss = _nodes.FirstOrDefault(node => node.Point.PointType == MapPointType.Boss
+            && progress.Available.Contains(node.Point.coord));
+        SetScroll(!Falling && availableBoss != null
+            ? _screen.Size.Y / 2f - (availableBoss.Position.Y + availableBoss.Size.Y / 2f)
+            : MinScroll);
         UpdateStatus();
         _progressDisplay.UpdatePositions();
         UpdateNavigation();

@@ -16,12 +16,13 @@ in any order. After 15 encounters (configurable) the boss is unlocked. Have fun!
   exploring for as long as there are unvisited encounters. Enable encounter locking
   in settings to stop exploring once the boss unlocks.
   Entering the boss ends ordinary encounter selection.
-  Double-boss acts retain their second boss, which unlocks after the first.
+  Acts with multiple bosses retain their boss sequence, unlocking one at a time.
   Each act starts a fresh count.
 - On the first unobstructed map opening, encounters fall with a simple circle collision
-  simulation. Bosses descend into a separate row above the pile and stay there;
+  simulation. Bosses descend into separate rows above the pile and stay there;
   they never collide with ordinary encounters. Everything settles in about four
-  seconds; selection waits until the pile settles. The fall waits for the map to
+  seconds; selection waits until the pile settles. Extra bosses wrap into more rows
+  to keep them within the map width. The fall waits for the map to
   fade in and pauses while another screen covers it, including mod selection pages.
   Closing before the fall starts keeps it pending. Closing during visible playback
   finishes the fall; reopening keeps the settled positions.
@@ -38,10 +39,10 @@ in any order. After 15 encounters (configurable) the boss is unlocked. Have fun!
   left of the lock badge at 12 o'clock, around the bottom and up to its right.
   Locked bosses stay dim; the available boss gets a steady highlight ring
   (gold by default). The ring has one segment per required encounter, switching
-  to a continuous track above 40. The second
-  boss stays locked until the first is visited, even at `15/15`. Cleared bosses
+  to a continuous track above 40. Each later
+  boss stays locked until the preceding bosses are visited, even at `15/15`. Cleared bosses
   keep a muted ring and check mark. Opening the map when a boss is available
-  scrolls to the boss row.
+  scrolls to that boss.
 - Visit order drives floor numbers and current-act room history. Progress uses
   the game's existing saved coordinates. The layout is deterministic and uses no
   gameplay RNG; a small `user://gravity_viewed_maps.cfg` file remembers which maps
@@ -80,7 +81,7 @@ settings; color and pulse controls are available through the in-run appearance p
   Selecting the 15-encounter option restores the default rule.
 
 A custom number above the act's available encounters requires visiting them all. The
-starting Ancient must still be visited first, and double bosses remain sequential.
+starting Ancient must still be visited first, and multiple bosses remain sequential.
 The custom field and its indented capping explanation appear only with Custom
 selected: **Setting the number higher than available encounters won't add more,
 it will just require all of them to be visited.**
@@ -150,6 +151,15 @@ the save for game content that inspects it, but Gravity replaces travel choices
 and does not render its paths. Relics/events that reason about original map rows
 or paths may need additional compatibility work. All co-op players need Gravity.
 
+Extra bosses are discovered from the map grid, linked map points, and boss nodes
+registered by other mods when the map is set. There is no fixed boss-count limit.
+The mod adding bosses still supplies their encounters and map nodes. BetterExperience
+1.5.5 uses this linked-boss structure; its map discovery and travel can be checked
+against the installed DLL with `GRAVITY_BETTEREXPERIENCE_DLL` when running
+`GravityIntegrationTests` on a matching architecture (its current DLL targets x64).
+The linked-map behavior is covered by integration fixtures; visual behavior and
+full-run compatibility still need in-game verification.
+
 Build and run the behavior checks:
 
 ```sh
@@ -193,7 +203,10 @@ In-game acceptance checks:
    Change the highlight color and reset to gold: the completed
    counter should update immediately, including in rooms and after reloading.
    In a double-boss act, the second stays dim with its lock until the first is
-   visited. Check that the next act resets progress to `0/15` and its normal text color.
+   visited. Repeat with three or more bosses: every boss should appear, unlock in
+   order, and remain reachable after saving/reloading. With enough bosses to wrap
+   into another row, check automatic scrolling and controller focus.
+   Check that the next act resets progress to `0/15` and its normal text color.
 5. Check mouse, controller, drawing tools, fast mode, a small viewport, and co-op
    votes. Restart with the same seed in a new run: the new run should animate.
 6. On the Mods page, select Gravity: settings should appear under **Gravity settings**,
@@ -370,10 +383,16 @@ Steam must be running and signed in to the publishing account (the item’s owne
 checks ownership, backs up returned listing metadata, verifies localized updates
 by reading them back, and keeps retry receipts in `workshop/.release-state/`.
 Preserve those receipts for retries. Previously verified live content/listings
-are skipped when still current. Gallery checks use preview filenames and order
-returned by the signed-in Steam API. The publisher does not download preview images
-or check the public Workshop page; delivery delays or pending content review can
-leave public previews showing an older version after Steam accepts an upload.
+are skipped when still current. Gallery checks verify filenames and order
+through Steam, then fetch image headers from the returned URLs. Unavailable images
+are checked again after 15 seconds, with at most eight attempts and a two-minute
+HTTP verification budget for the gallery. Successful images are not polled again;
+Steam metadata is refreshed once before the final attempt (the Steam query has its
+own timeout). Rate limiting or a Retry-After response stops verification immediately.
+A persistent failure reports the filename, URL, and error; it never automatically
+reuploads. Rerun release to verify again, or use `--previews-only` to reupload the
+gallery. These checks establish image availability, not correct animation or public
+page rendering.
 
 ```sh
 ./release.sh --language japanese    # Listing text only; no content upload.

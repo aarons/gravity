@@ -16,6 +16,7 @@ internal interface IWorkshopClient : IDisposable
     RemoteItem Read(ulong itemId, string language);
     void UploadContent(PreparedRelease release, RemoteItem previous);
     void UploadPreviews(PreparedRelease release, RemoteItem previous);
+    void VerifyPreviewDownloads(Preview[] previews, Func<Preview[]> refresh);
     void ReconcileDependencies(ulong itemId, ulong[] previous, ulong[] desired);
     void UploadListing(ulong itemId, Listing listing);
 }
@@ -100,7 +101,14 @@ internal sealed class Publisher(IWorkshopClient client, string stateDirectory, A
     {
         if (!PreviewGallery.Matches(release, remote))
             throw new InvalidOperationException("Steam preview filenames or order did not match the prepared gallery. Retry ./release.sh --previews-only.");
-        log($"Verified {PreviewGallery.Files(release).Length} shared preview filenames and order through Steam.");
+        client.VerifyPreviewDownloads(remote.Previews, () =>
+        {
+            var refreshed = Read(release.ItemId, "english");
+            if (!PreviewGallery.Matches(release, refreshed))
+                throw new InvalidOperationException("Steam gallery changed during verification. Retry ./release.sh --previews-only.");
+            return refreshed.Previews;
+        });
+        log($"Verified {PreviewGallery.Files(release).Length} shared previews: filenames, order, and downloadable image headers.");
     }
 
     public int Run(PreparedRelease release, string? language, bool previewsOnly = false, string? itemDirectory = null)

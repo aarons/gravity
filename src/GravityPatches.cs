@@ -48,6 +48,8 @@ internal static class RemovePathsPatch
 [HarmonyPatch(typeof(NMapScreen), nameof(NMapScreen.SetMap))]
 internal static class SetMapPatch
 {
+    // Let other mods add their boss nodes before taking the layout snapshot.
+    [HarmonyPriority(Priority.Last)]
     private static void Postfix(NMapScreen __instance, RunState ____runState, ulong seed,
         Dictionary<MapCoord, NMapPoint> ____mapPointDictionary) =>
         GravityMapView.Attach(__instance, ____runState, seed, ____mapPointDictionary);
@@ -62,6 +64,7 @@ internal static class OpenMapPatch
         if (__state) ____hasPlayedAnimation = true;
     }
 
+    [HarmonyPriority(Priority.Last)]
     private static void Postfix(NMapScreen __instance, bool __state)
     {
         if (__state) GravityMapView.Get(__instance)!.Open();

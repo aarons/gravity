@@ -218,6 +218,12 @@ internal sealed class SteamWorkshopClient : IWorkshopClient
         Submit(handle, null, "upload shared previews");
     }
 
+    public void VerifyPreviewDownloads(Preview[] previews, Func<Preview[]> refresh)
+    {
+        using var http = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
+        PreviewDownloads.Verify(previews, refresh, http, Console.WriteLine);
+    }
+
     public void ReconcileDependencies(ulong itemId, ulong[] previous, ulong[] desired)
     {
         var item = new PublishedFileId_t(itemId);

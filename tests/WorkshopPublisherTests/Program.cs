@@ -3,6 +3,7 @@ using WorkshopLocalization;
 
 var tests = new (string Name, Action Test)[]
 {
+    ("preview delivery retries are bounded, spaced, refreshed, and respect backoff", PreviewDownloadTests.Run),
     ("first release creates privately, saves ID and retries without changing snapshot", () => WithFixture((release, steam, publisher, state) =>
     {
         release = FirstRelease(release);
@@ -92,15 +93,28 @@ var tests = new (string Name, Action Test)[]
         Assert(steam.Calls.SequenceEqual(new[] { "previews" }));
         Assert(steam.ContentUploads == 1);
     })),
-    ("preview readback rejects mismatches and accepts missing public URLs", () => WithFixture((release, steam, publisher, state) =>
+    ("preview readback rejects mismatches and delivery failures", () => WithFixture((release, steam, publisher, state) =>
     {
         steam.IgnorePreviews = true;
         Throws<InvalidOperationException>(() => publisher.Run(release, null, previewsOnly: true));
         steam.IgnorePreviews = false;
         Assert(publisher.Run(release, null, previewsOnly: true) == 0);
-        Assert(steam.Previews.All(p => p.Url == ""));
+        steam.FailPreviewDownloads = true;
+        Throws<IOException>(() => publisher.Run(release, null, previewsOnly: true));
+        steam.FailPreviewDownloads = false;
         Assert(publisher.Run(release, null) == 0);
         Assert(steam.Text.ContainsKey("japanese") && steam.Text.ContainsKey("french"));
+    })),
+    ("unchanged release checks delivery without automatic reuploads", () => WithFixture((release, steam, publisher, state) =>
+    {
+        Assert(publisher.Run(release, null) == 0);
+        steam.Calls.Clear();
+        steam.FailPreviewDownloads = true;
+        var checks = steam.PreviewChecks;
+        Throws<IOException>(() => publisher.Run(release, null));
+        Assert(steam.PreviewChecks == checks + 1 && steam.Calls.Count == 0);
+        Assert(publisher.Run(release, "japanese") == 0);
+        Assert(steam.PreviewChecks == checks + 1);
     })),
     ("unchanged release skips all submissions", () => WithFixture((release, steam, publisher, state) =>
     {
@@ -289,6 +303,13 @@ sealed class FakeSteam : IWorkshopClient
     public void UploadPreviews(PreparedRelease release, RemoteItem previous)
     {
         Calls.Add("previews"); SetPreviews(release);
+    }
+    public bool FailPreviewDownloads;
+    public int PreviewChecks;
+    public void VerifyPreviewDownloads(Preview[] previews, Func<Preview[]> refresh)
+    {
+        PreviewChecks++;
+        if (FailPreviewDownloads) throw new IOException("Simulated preview 404");
     }
     public void ReconcileDependencies(ulong itemId, ulong[] previous, ulong[] desired)
     {

@@ -11,7 +11,7 @@ internal static class FallingLayout
 
     public static Vector2[][] Simulate(IReadOnlyList<Body> bodies, float left, float right, float floor)
     {
-        // Bosses have their own landing row; they never collide with or weigh down the pile.
+        // Bosses have separate landing rows; they never collide with or weigh down the pile.
         var pileIndices = Enumerable.Range(0, bodies.Count).Where(i => !bodies[i].Boss).ToArray();
         var bossIndices = Enumerable.Range(0, bodies.Count).Where(i => bodies[i].Boss).ToArray();
         var pile = pileIndices.Select(i => bodies[i]).ToArray();
@@ -19,15 +19,30 @@ internal static class FallingLayout
         if (bossIndices.Length == 0) return pileFrames;
 
         var pileTop = pileFrames[^1].Select((position, i) => position.Y - pile[i].Radius).Min();
-        var bossY = pileTop - 64f - bossIndices.Max(i => bodies[i].Radius);
-        var rowWidth = bossIndices.Sum(i => bodies[i].Radius * 2f) + (bossIndices.Length - 1) * 48f;
-        var x = (left + right - rowWidth) / 2f;
         var destinations = new Vector2[bossIndices.Length];
-        for (var b = 0; b < bossIndices.Length; b++)
+        var rowBottom = pileTop - 64f;
+        for (var start = 0; start < bossIndices.Length;)
         {
-            var radius = bodies[bossIndices[b]].Radius;
-            destinations[b] = new Vector2(x + radius, bossY);
-            x += radius * 2f + 48f;
+            var end = start + 1;
+            var rowWidth = bodies[bossIndices[start]].Radius * 2f;
+            var rowRadius = bodies[bossIndices[start]].Radius;
+            while (end < bossIndices.Length)
+            {
+                var radius = bodies[bossIndices[end]].Radius;
+                if (rowWidth + 48f + radius * 2f > right - left) break;
+                rowWidth += 48f + radius * 2f;
+                rowRadius = Math.Max(rowRadius, radius);
+                end++;
+            }
+            var x = (left + right - rowWidth) / 2f;
+            for (var b = start; b < end; b++)
+            {
+                var radius = bodies[bossIndices[b]].Radius;
+                destinations[b] = new Vector2(x + radius, rowBottom - rowRadius);
+                x += radius * 2f + 48f;
+            }
+            rowBottom -= rowRadius * 2f + 48f;
+            start = end;
         }
 
         var frames = new Vector2[Steps + 1][];

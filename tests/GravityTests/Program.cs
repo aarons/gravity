@@ -62,6 +62,26 @@ var serialized = System.Text.Json.JsonSerializer.Serialize(visits);
 Check(Progress(System.Text.Json.JsonSerializer.Deserialize<int[]>(serialized)!).Available.Count == 0,
     "Reconstructed progress matches saved visits");
 
+foreach (var bossCount in new[] { 1, 2, 3, 4, 10, 25 })
+foreach (var requirement in new[] { 0, 15 })
+foreach (var locked in new[] { false, true })
+{
+    var bosses = Enumerable.Range(100, bossCount).ToArray();
+    var path = new List<int> { 0 };
+    path.AddRange(encounters.Take(requirement));
+    for (var cleared = 0; cleared <= bossCount; cleared++)
+    {
+        var saved = System.Text.Json.JsonSerializer.Serialize(path);
+        var state = new GravityProgress<int>(0, encounters, bosses,
+            System.Text.Json.JsonSerializer.Deserialize<int[]>(saved)!, requirement, locked);
+        Check(state.Available.Intersect(bosses).SequenceEqual(bosses.Skip(cleared).Take(1)),
+            "Every boss must unlock in order, including after save reconstruction");
+        Check(state.EncountersVisited == requirement, "Bosses must not increase encounter progress");
+        if (cleared > 0) Check(!state.Available.Intersect(encounters).Any(), "Boss chain must keep encounters closed");
+        if (cleared < bossCount) path.Add(bosses[cleared]);
+    }
+}
+
 for (var seed = 0; seed < 8; seed++)
 {
     var random = new Random(seed);
@@ -69,8 +89,9 @@ for (var seed = 0; seed < 8; seed++)
     for (var row = 1; row <= 15; row++)
         for (var column = 0; column < 4; column++)
             bodies.Add(new(new Vector2(-450 + column * 265 + random.Next(-20, 21), 800 - row * 155), 44));
-    bodies.Add(new(new Vector2(0, -1900), 162, Boss: true));
-    if (seed % 2 == 0) bodies.Add(new(new Vector2(0, -2200), 162, Boss: true));
+    var bossCount = new[] { 1, 2, 3, 4, 5, 10, 16, 25 }[seed];
+    for (var boss = 0; boss < bossCount; boss++)
+        bodies.Add(new(new Vector2(0, -1900 - boss * 350), 162, Boss: true));
     var frames = FallingLayout.Simulate(bodies, -570, 510, 929);
     var final = frames[^1];
     Check(frames.All(frame => frame[0] == bodies[0].Position), "The Ancient must never move");
