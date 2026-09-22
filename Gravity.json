@@ -3,7 +3,7 @@
   "name": "Gravity",
   "author": "Laethos",
   "description": "Encounters fall into a pile. There are no paths to follow so they can be chosen in any order. After 15 encounters (configurable) the boss is unlocked. Have fun!",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "min_game_version": "0.107.1",
   "has_pck": false,
   "has_dll": true,

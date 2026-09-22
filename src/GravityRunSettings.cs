@@ -30,6 +30,15 @@ internal static class GravityRunSettings
             Set(run.ExtraFields, GravitySettings.NextRunRequirement, GravitySettings.LockEncountersAfterBossUnlock);
     }
     public static void Copy(object source, object destination) => Set(destination, Get(source), GetLockEncounters(source));
+
+    // Lobby transfers must preserve absence, rather than manufacture a host snapshot.
+    // Save conversion intentionally keeps Copy's legacy defaults.
+    public static bool TryCopy(object? source, object destination)
+    {
+        if (source == null || !Rules.TryGetValue(source, out var rule)) return false;
+        Set(destination, rule.Requirement, rule.LockEncounters);
+        return true;
+    }
 }
 
 [HarmonyPatch(typeof(RunManager), "InitializeNewRun")]
@@ -106,7 +115,7 @@ internal static class LobbySettingsReadPatch
 [HarmonyPatch(typeof(StartRunLobby), "HandleLobbyBeginRunMessage")]
 internal static class ReceiveLobbySettingsPatch
 {
-    private static void Prefix(StartRunLobby __instance, LobbyBeginRunMessage message) => GravityRunSettings.Copy(message.modifiers, __instance);
+    private static void Prefix(StartRunLobby __instance, LobbyBeginRunMessage message) => GravityRunSettings.TryCopy(message.modifiers, __instance);
 }
 
 [HarmonyPatch(typeof(RunManager), nameof(RunManager.SetUpNewMultiplayer))]
@@ -115,7 +124,15 @@ internal static class MultiplayerRunSettingsPatch
     private static void Prefix(RunState state, StartRunLobby lobby)
     {
         if (lobby.NetService.Type == MegaCrit.Sts2.Core.Multiplayer.Game.NetGameType.Client)
-            GravityRunSettings.Copy(lobby, state.ExtraFields);
+        {
+            if (!GravityRunSettings.TryCopy(lobby, state.ExtraFields))
+            {
+                GravityRunSettings.Initialize(state);
+                Console.WriteLine($"[Gravity] Host lobby settings were unavailable; using encounter requirement "
+                    + $"{GravityRunSettings.Get(state.ExtraFields)} and encounter lock "
+                    + $"{GravityRunSettings.GetLockEncounters(state.ExtraFields)} for this run.");
+            }
+        }
         else GravityRunSettings.Set(state.ExtraFields, GravitySettings.NextRunRequirement, GravitySettings.LockEncountersAfterBossUnlock);
     }
 }

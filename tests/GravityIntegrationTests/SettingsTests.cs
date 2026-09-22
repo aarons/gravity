@@ -16,6 +16,8 @@ internal static class SettingsTests
     public static void Run()
     {
         VerifyPreferences();
+        VerifyLobbyMessageTransport();
+        VerifyMissingLobbySettings();
         var info = JsonSerializationUtility.Options.GetTypeInfo(typeof(SerializableExtraRunFields));
         foreach (var requirement in new[] { -1, 0, 1, 15, 60, 99, 999, 1000 })
         foreach (var lockEncounters in new[] { false, true })
@@ -124,6 +126,117 @@ internal static class SettingsTests
         GravitySettings.RestoreEncounterPreferences(15, true);
         VerifyVersionMatching();
         Console.WriteLine("Passed native JSON, save conversion, network packet, lobby rule, and next-run isolation checks.");
+    }
+
+    private static void VerifyMissingLobbySettings()
+    {
+        var receive = AccessTools.Method(typeof(ReceiveLobbySettingsPatch), "Prefix");
+        var initialize = AccessTools.Method(typeof(MultiplayerRunSettingsPatch), "Prefix");
+        GravitySettings.RestoreEncounterPreferences(3, true);
+        GravitySettings.LockEncountersAfterBossUnlock = true;
+
+        // Cover both a missing receive hook and a received message lacking its snapshot.
+        foreach (var receivedMessage in new[] { false, true })
+        {
+            var lobby = NewClientLobby();
+            if (receivedMessage)
+            {
+                var message = new LobbyBeginRunMessage { modifiers = [] };
+                receive.Invoke(null, [lobby, message]);
+                Check(!GravityRunSettings.TryCopy(lobby, new object()),
+                    "Missing message settings must not manufacture a host snapshot of 15");
+            }
+            var state = NewState();
+            initialize.Invoke(null, [state, lobby]);
+            Check(GravityRunSettings.Get(state.ExtraFields) == 3
+                && GravityRunSettings.GetLockEncounters(state.ExtraFields),
+                "Missing host settings must fall back to the client's configured rules");
+            GravitySettings.RestoreEncounterPreferences(9, true);
+            GravityRunSettings.Initialize(state);
+            Check(GravityRunSettings.Get(state.ExtraFields) == 3,
+                "Fallback rules must be snapshotted, not follow later preference changes");
+            var reloaded = ExtraRunFields.FromSerializable(state.ExtraFields.ToSerializable());
+            Check(GravityRunSettings.Get(reloaded) == 3 && GravityRunSettings.GetLockEncounters(reloaded),
+                "Fallback rules must survive save conversion");
+            GravitySettings.RestoreEncounterPreferences(3, true);
+        }
+
+        foreach (var hostRequirement in new[] { 0, -1, 3, 15, 99 })
+        {
+            var lobby = NewClientLobby();
+            var message = new LobbyBeginRunMessage { modifiers = [] };
+            GravityRunSettings.Set(message.modifiers, hostRequirement, false);
+            receive.Invoke(null, [lobby, message]);
+            var state = NewState();
+            initialize.Invoke(null, [state, lobby]);
+            GravityRunSettings.Initialize(state);
+            Check(GravityRunSettings.Get(state.ExtraFields) == hostRequirement
+                && !GravityRunSettings.GetLockEncounters(state.ExtraFields),
+                "Received host rules, including 15, must override the client's preferences");
+            Check(GravitySettings.NextRunRequirement == 3 && GravitySettings.LockEncountersAfterBossUnlock,
+                "Host rules must not overwrite the client's personal preferences");
+        }
+        GravitySettings.RestoreEncounterPreferences(15, true);
+        GravitySettings.LockEncountersAfterBossUnlock = false;
+        Console.WriteLine("Passed missing-host fallback and host-rule precedence checks.");
+
+        static StartRunLobby NewClientLobby()
+        {
+            var lobby = (StartRunLobby)RuntimeHelpers.GetUninitializedObject(typeof(StartRunLobby));
+            AccessTools.Field(typeof(StartRunLobby), "<NetService>k__BackingField").SetValue(lobby,
+                RuntimeHelpers.GetUninitializedObject(typeof(NetClientGameService)));
+            return lobby;
+        }
+        static RunState NewState()
+        {
+            var state = (RunState)RuntimeHelpers.GetUninitializedObject(typeof(RunState));
+            AccessTools.Property(typeof(RunState), nameof(RunState.ExtraFields)).SetValue(state, new ExtraRunFields());
+            return state;
+        }
+    }
+
+    private static void VerifyLobbyMessageTransport()
+    {
+        GravitySettings.RestoreEncounterPreferences(3, true);
+        var message = new LobbyBeginRunMessage { playersInLobby = [], modifiers = [], seed = "gravity-test", act1 = "test" };
+        var writer = new PacketWriter();
+        message.Serialize(writer);
+        writer.WriteInt(654321);
+        var reader = new PacketReader();
+        reader.Reset(writer.Buffer);
+        // NetMessageBus creates a boxed struct and deserializes through INetMessage.
+        INetMessage received = (INetMessage)Activator.CreateInstance(typeof(LobbyBeginRunMessage))!;
+        received.Deserialize(reader);
+        var copy = (LobbyBeginRunMessage)received;
+        Check(GravityRunSettings.Get(copy.modifiers) == 3,
+            $"Boxed lobby message lost host requirement: expected 3, got {GravityRunSettings.Get(copy.modifiers)}");
+        Check(reader.ReadInt() == 654321, "Boxed lobby message lost packet alignment");
+        // Initialize only the message under test without booting the game's mod loader.
+        var cacheField = AccessTools.Field(typeof(MessageTypes), "_cache");
+        var previousCache = cacheField.GetValue(null);
+        var cache = RuntimeHelpers.GetUninitializedObject(cacheField.FieldType);
+        AccessTools.Field(cacheField.FieldType, "_typeToId").SetValue(cache,
+            new Dictionary<Type, int> { [typeof(LobbyBeginRunMessage)] = 0 });
+        AccessTools.Field(cacheField.FieldType, "_idToType").SetValue(cache,
+            new List<Type> { typeof(LobbyBeginRunMessage) });
+        cacheField.SetValue(null, cache);
+        try
+        {
+            // Avoid the constructor's Godot logger; these packet methods only use reader/writer.
+            var bus = (NetMessageBus)RuntimeHelpers.GetUninitializedObject(typeof(NetMessageBus));
+            AccessTools.Field(typeof(NetMessageBus), "_reader").SetValue(bus, new PacketReader());
+            AccessTools.Field(typeof(NetMessageBus), "_writer").SetValue(bus, new PacketWriter());
+            var packet = bus.SerializeMessage(1, message, out var length);
+            Check(bus.TryDeserializeMessage(packet[..length], out var dispatched, out var sender),
+                "Native message bus could not deserialize the lobby message");
+            Check(sender == 1 && GravityRunSettings.Get(((LobbyBeginRunMessage)dispatched!).modifiers) == 3,
+                "Native message bus lost the host's requirement");
+        }
+        finally
+        {
+            cacheField.SetValue(null, previousCache);
+        }
+        GravitySettings.RestoreEncounterPreferences(15, true);
     }
 
     private static void VerifyPreferences()

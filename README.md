@@ -58,6 +58,10 @@ The host’s settings are used in a co-op game.** A new run snapshots both rules
 later acts, saves, and reloads retain them. Existing saves without a requirement
 snapshot use 15; saves without the lock setting allow continued exploration.
 Clients' personal defaults are not overwritten.
+If a new co-op run reaches client initialization without the host's settings,
+Gravity uses the client's configured defaults for that run and writes a diagnostic
+message to the log. Matching local settings provide a fallback in this case;
+received host settings always take precedence, including the default of 15.
 
 If **BaseLib** or **RitsuLib** is installed and enabled, Gravity also appears in
 its mod-settings panel. RitsuLib provides main-menu and pause-menu shortcuts;

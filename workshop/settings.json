@@ -1,6 +1,6 @@
 {
-  "visibility": "private",
-  "changeNote": "1.0.2\n\nImproved the mod description.\n\n────────────────────\n\n优化了模组介绍。",
+  "visibility": "public",
+  "changeNote": "1.0.3\n\nIn new co-op runs, clients now use their own encounter settings if the host's settings are unavailable, instead of falling back to 15 encounters. Received host settings still take priority.\n\n────────────────────\n\n新建联机游戏时，若无法获取房主设置，客户端现在会使用自己的遭遇设置，而不再默认要求完成15次遭遇。成功接收的房主设置仍然优先。",
   "tags": [],
   "dependencies": [],
   "contentDescriptors": []
