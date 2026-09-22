@@ -218,35 +218,6 @@ internal sealed class SteamWorkshopClient : IWorkshopClient
         Submit(handle, null, "upload shared previews");
     }
 
-    public void VerifyPreviewDownloads(Preview[] previews)
-    {
-        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
-        foreach (var preview in previews.Where(p => p.Type == PreviewGallery.ImageType))
-        {
-            try
-            {
-                if (!Uri.TryCreate(preview.Url, UriKind.Absolute, out var uri) || uri.Scheme != "https")
-                    throw new IOException("Steam returned no HTTPS image URL");
-                using var response = http.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead).GetAwaiter().GetResult();
-                response.EnsureSuccessStatusCode();
-                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
-                using var stream = response.Content.ReadAsStream();
-                var header = new byte[16];
-                stream.ReadExactlyAsync(header, timeout.Token).AsTask().GetAwaiter().GetResult();
-                if (!(header[0] == 0xff && header[1] == 0xd8 && header[2] == 0xff)
-                    && !header.AsSpan(0, 8).SequenceEqual(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 })
-                    && !header.AsSpan(0, 6).SequenceEqual("GIF87a"u8)
-                    && !header.AsSpan(0, 6).SequenceEqual("GIF89a"u8))
-                    throw new IOException("Steam URL did not return a supported image");
-            }
-            catch (Exception error) when (error is HttpRequestException or IOException or OperationCanceledException)
-            {
-                throw new IOException($"Preview '{preview.Name}' could not be downloaded: {error.Message}. "
-                    + "Steam may still be processing it; retry ./release.sh --previews-only if it remains missing.", error);
-            }
-        }
-    }
-
     public void ReconcileDependencies(ulong itemId, ulong[] previous, ulong[] desired)
     {
         var item = new PublishedFileId_t(itemId);

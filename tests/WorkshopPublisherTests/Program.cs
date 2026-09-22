@@ -92,15 +92,15 @@ var tests = new (string Name, Action Test)[]
         Assert(steam.Calls.SequenceEqual(new[] { "previews" }));
         Assert(steam.ContentUploads == 1);
     })),
-    ("preview readback and download failures cannot report success", () => WithFixture((release, steam, publisher, state) =>
+    ("preview readback rejects mismatches and accepts missing public URLs", () => WithFixture((release, steam, publisher, state) =>
     {
         steam.IgnorePreviews = true;
         Throws<InvalidOperationException>(() => publisher.Run(release, null, previewsOnly: true));
         steam.IgnorePreviews = false;
-        steam.FailPreviewDownload = true;
-        Throws<IOException>(() => publisher.Run(release, null, previewsOnly: true));
-        steam.FailPreviewDownload = false;
         Assert(publisher.Run(release, null, previewsOnly: true) == 0);
+        Assert(steam.Previews.All(p => p.Url == ""));
+        Assert(publisher.Run(release, null) == 0);
+        Assert(steam.Text.ContainsKey("japanese") && steam.Text.ContainsKey("french"));
     })),
     ("unchanged release skips all submissions", () => WithFixture((release, steam, publisher, state) =>
     {
@@ -254,7 +254,7 @@ sealed class FakeSteam : IWorkshopClient
     public ulong[] Dependencies = [];
     public int ContentUploads;
     public Preview[] Previews = [];
-    public bool IgnorePreviews, FailPreviewDownload;
+    public bool IgnorePreviews;
     public string? FailLanguage, IgnoreLanguage;
     public bool LoseContentResponse, FailDependencies, OverwriteEnglish;
     public bool LoseCreateResponse, NeedsLegalAgreement;
@@ -284,15 +284,11 @@ sealed class FakeSteam : IWorkshopClient
     {
         if (IgnorePreviews) return;
         Previews = Previews.Where(p => p.Type != 0).Concat(PreviewGallery.Files(release)
-            .Select(p => new Preview(Path.GetFileName(p), 0, "https://example.com/image"))).ToArray();
+            .Select(p => new Preview(Path.GetFileName(p), 0))).ToArray();
     }
     public void UploadPreviews(PreparedRelease release, RemoteItem previous)
     {
         Calls.Add("previews"); SetPreviews(release);
-    }
-    public void VerifyPreviewDownloads(Preview[] previews)
-    {
-        if (FailPreviewDownload) throw new IOException("Simulated missing image on Steam CDN");
     }
     public void ReconcileDependencies(ulong itemId, ulong[] previous, ulong[] desired)
     {

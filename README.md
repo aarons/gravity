@@ -370,7 +370,10 @@ Steam must be running and signed in to the publishing account (the item’s owne
 checks ownership, backs up returned listing metadata, verifies localized updates
 by reading them back, and keeps retry receipts in `workshop/.release-state/`.
 Preserve those receipts for retries. Previously verified live content/listings
-are skipped when still current. Image delivery can lag; inspect failures before retrying.
+are skipped when still current. Gallery checks use preview filenames and order
+returned by the signed-in Steam API. The publisher does not download preview images
+or check the public Workshop page; delivery delays or pending content review can
+leave public previews showing an older version after Steam accepts an upload.
 
 ```sh
 ./release.sh --language japanese    # Listing text only; no content upload.
