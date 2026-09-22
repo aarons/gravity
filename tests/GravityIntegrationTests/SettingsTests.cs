@@ -1,9 +1,16 @@
-using System.Text.Json;
+using System.Reflection;
+using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
-using HarmonyLib;
+using System.Text.Json;
 using Gravity;
+using HarmonyLib;
 using MegaCrit.Sts2.Core.Entities.Multiplayer;
+using MegaCrit.Sts2.Core.Unlocks;
+using MegaCrit.Sts2.Core.Modding;
+using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Models.Modifiers;
 using MegaCrit.Sts2.Core.Multiplayer;
+using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
 using MegaCrit.Sts2.Core.Multiplayer.Messages.Lobby;
 using MegaCrit.Sts2.Core.Multiplayer.Serialization;
@@ -13,231 +20,207 @@ using MegaCrit.Sts2.Core.Saves.Runs;
 
 internal static class SettingsTests
 {
+    public static void InitializeModels()
+    {
+        // Stand in for the completed mod loader, then use the real discovery and ID
+        // initialization. No manual ModelDb.Inject or packet-ID seeding for Gravity.
+        var mods = new List<Mod>();
+        foreach (var assembly in new[] { typeof(GravitySettingsModifier).Assembly, typeof(SettingsTests).Assembly })
+        {
+            var mod = (Mod)RuntimeHelpers.GetUninitializedObject(typeof(Mod));
+            mod.assembly = assembly;
+            mod.state = ModLoadState.Loaded;
+            var field = AccessTools.Field(typeof(Mod), "manifest");
+            var manifest = Activator.CreateInstance(field.FieldType)!;
+            AccessTools.Field(field.FieldType, "id").SetValue(manifest, assembly.GetName().Name);
+            field.SetValue(mod, manifest);
+            mods.Add(mod);
+        }
+        AccessTools.Field(typeof(ModManager), "_mods").SetValue(null, mods);
+        AccessTools.Property(typeof(ModManager), nameof(ModManager.State)).SetValue(null, ModManagerState.Initialized);
+        // The final diagnostic uses Godot's OS API. Omit only logging in this headless fixture.
+        var fixture = new Harmony("Gravity.SettingsFixture");
+        fixture.Patch(AccessTools.Method(typeof(ModelIdSerializationCache), nameof(ModelIdSerializationCache.Init)),
+            transpiler: new HarmonyMethod(typeof(SettingsTests), nameof(WithoutLogging)));
+        fixture.Patch(AccessTools.Constructor(typeof(UnlockState), [typeof(IEnumerable<UnlockState>)]),
+            prefix: new HarmonyMethod(typeof(SettingsTests), nameof(EmptyPlayersUnlocks)));
+        ModelDb.Init();
+        ModelIdSerializationCache.Init();
+        ModelDb.InitIds();
+        Check(ModelDb.Modifier<GravitySettingsModifier>() != null, "Game discovery must register Gravity's model");
+        var names = PropertyNames();
+        var bits = SavedPropertiesTypeCache.NetIdBitSize;
+        GravitySettingsModifier.RegisterSavedProperties();
+        Check(names.SequenceEqual(PropertyNames()) && bits == SavedPropertiesTypeCache.NetIdBitSize,
+            "Gravity must not change any saved-property network ID or its bit width");
+        SavedPropertiesTypeCache.InjectTypeIntoCache(typeof(OtherSettingsModifier));
+        var otherNames = PropertyNames();
+        GravitySettingsModifier.RegisterSavedProperties();
+        Check(otherNames.SequenceEqual(PropertyNames()) && bits == SavedPropertiesTypeCache.NetIdBitSize,
+            "Registration must preserve another mod's properties and be idempotent");
+        Check(!ModelDb.GoodModifiers.Concat(ModelDb.BadModifiers).OfType<GravitySettingsModifier>().Any(), "Internal snapshot must not enter the selectable modifier pool");
+    }
+
+    private static void EmptyPlayersUnlocks(ref IEnumerable<UnlockState> __0)
+    {
+        // No Godot-backed player inventories in the headless fixture.
+        if (!__0.Any()) __0 = [UnlockState.all];
+    }
+
+    private static string[] PropertyNames() => ((List<string>)AccessTools.Field(typeof(SavedPropertiesTypeCache),
+        "_netIdToPropertyNameMap").GetValue(null)!).ToArray();
+
+    private static IEnumerable<CodeInstruction> WithoutLogging(IEnumerable<CodeInstruction> instructions)
+    {
+        foreach (var instruction in instructions)
+        {
+            if (instruction.operand is MethodInfo method && method.DeclaringType?.Name == "Log")
+            {
+                for (var i = 0; i < method.GetParameters().Length; i++) yield return new CodeInstruction(OpCodes.Pop);
+            }
+            else yield return instruction;
+        }
+    }
+
     public static void Run()
     {
         VerifyPreferences();
-        VerifyLobbyMessageTransport();
-        VerifyMissingLobbySettings();
-        var info = JsonSerializationUtility.Options.GetTypeInfo(typeof(SerializableExtraRunFields));
         foreach (var requirement in new[] { -1, 0, 1, 15, 60, 99, 999, 1000 })
-        foreach (var lockEncounters in new[] { false, true })
+        foreach (var locked in new[] { false, true })
         {
-            var fields = new ExtraRunFields { StartedWithNeow = true, TestSubjectKills = 3, FreedRepy = true };
-            GravityRunSettings.Set(fields, requirement, lockEncounters);
-            var save = fields.ToSerializable();
-            var json = JsonSerializer.Serialize(save, info);
-            using var document = JsonDocument.Parse(json);
-            Check(document.RootElement.TryGetProperty("gravity_encounters", out var stored) && stored.GetInt32() == requirement,
-                "Rule missing from native JSON metadata: " + json);
-            var restored = (SerializableExtraRunFields)JsonSerializer.Deserialize(json, info)!;
-            var loaded = ExtraRunFields.FromSerializable(restored);
-            Check(GravityRunSettings.Get(loaded) == requirement, "Requirement must survive native JSON save/load");
-            Check(document.RootElement.GetProperty("gravity_lock_encounters").GetBoolean() == lockEncounters
-                && GravityRunSettings.GetLockEncounters(loaded) == lockEncounters,
-                "Encounter lock must survive native JSON save/load");
-            Check(loaded.StartedWithNeow && loaded.TestSubjectKills == 3 && loaded.FreedRepy, "Native extra fields must survive");
-            var runJson = JsonSerializationUtility.ToJson(new SerializableRun { ExtraFields = save });
-            var runSave = JsonSerializer.Deserialize<SerializableRun>(runJson, JsonSerializationUtility.Options)!;
-            Check(GravityRunSettings.Get(runSave.ExtraFields) == requirement, "Full run save dropped its encounter snapshot");
-            Check(GravityRunSettings.GetLockEncounters(runSave.ExtraFields) == lockEncounters, "Full run save dropped its lock snapshot");
-
+            var snapshot = GravitySettingsModifier.Create(requirement, locked);
+            var other = (OtherSettingsModifier)ModelDb.Modifier<OtherSettingsModifier>().ToMutable();
+            other.CombatsLeft = 731;
+            other.IsUsed = !locked;
+            var message = new LobbyBeginRunMessage { playersInLobby = [],
+                modifiers = [other.ToSerializable(), snapshot.ToSerializable()], seed = "gravity-test", act1 = "overgrowth" };
             var writer = new PacketWriter();
-            save.Serialize(writer);
-            writer.WriteInt(123456); // Catch accidental packet misalignment after our extension.
-            var reader = new PacketReader();
-            reader.Reset(writer.Buffer);
-            var network = new SerializableExtraRunFields();
-            network.Deserialize(reader);
-            Check(GravityRunSettings.Get(network) == requirement && reader.ReadInt() == 123456, "Network round trip lost run settings or packet alignment");
-            Check(GravityRunSettings.GetLockEncounters(network) == lockEncounters, "Network round trip lost encounter lock");
-
-            var nextRunRequirement = requirement == 1000 ? 999 : requirement;
-            GravitySettings.RestoreEncounterPreferences(nextRunRequirement, true);
-            GravitySettings.LockEncountersAfterBossUnlock = lockEncounters;
-            var message = new LobbyBeginRunMessage { playersInLobby = [], modifiers = [], seed = "gravity-test", act1 = "test" };
-            writer.Reset();
             message.Serialize(writer);
             writer.WriteInt(654321);
-            // The receiving client has its own default before reading the host's message.
-            GravitySettings.RestoreEncounterPreferences(9, true);
-            GravitySettings.LockEncountersAfterBossUnlock = !lockEncounters;
+            var reader = new PacketReader();
             reader.Reset(writer.Buffer);
-            var received = new LobbyBeginRunMessage();
+            INetMessage received = (INetMessage)Activator.CreateInstance(typeof(LobbyBeginRunMessage))!;
             received.Deserialize(reader);
-            // Simulate the struct copies made by generic network dispatch.
-            var copy = received;
-            Check(GravityRunSettings.Get(copy.modifiers) == nextRunRequirement && reader.ReadInt() == 654321,
-                "Host's rule must survive lobby message serialization and struct copies");
-            Check(GravityRunSettings.GetLockEncounters(copy.modifiers) == lockEncounters, "Lobby message lost the host's encounter lock");
-
-            var lobby = (StartRunLobby)RuntimeHelpers.GetUninitializedObject(typeof(StartRunLobby));
-            AccessTools.Field(typeof(StartRunLobby), "<NetService>k__BackingField").SetValue(lobby,
-                RuntimeHelpers.GetUninitializedObject(typeof(NetClientGameService)));
-            AccessTools.Method(typeof(ReceiveLobbySettingsPatch), "Prefix").Invoke(null, [lobby, copy]);
-            var clientRun = NewState();
-            AccessTools.Method(typeof(MultiplayerRunSettingsPatch), "Prefix").Invoke(null, [clientRun, lobby]);
-            GravityRunSettings.Initialize(clientRun);
-            Check(GravityRunSettings.Get(clientRun.ExtraFields) == nextRunRequirement,
-                "Client initialization must preserve the host's snapshot");
-            Check(GravitySettings.NextRunRequirement == 9, "Receiving host settings must not overwrite personal defaults");
-            Check(GravityRunSettings.GetLockEncounters(clientRun.ExtraFields) == lockEncounters
-                && GravitySettings.LockEncountersAfterBossUnlock == !lockEncounters,
-                "Client must use the host's lock without overwriting its personal default");
-            var soloRun = NewState();
-            GravityRunSettings.Initialize(soloRun);
-            Check(GravityRunSettings.Get(soloRun.ExtraFields) == 9, "Next solo run must still use the client's default");
-            Check(GravityRunSettings.GetLockEncounters(soloRun.ExtraFields) == !lockEncounters,
-                "Next solo run must use the client's own lock setting");
-
+            Check(reader.ReadInt() == 654321, "Native lobby packet must retain alignment");
+            var restored = ((LobbyBeginRunMessage)received).modifiers.Select(ModifierModel.FromSerializable).ToList();
+            var otherRestored = (OtherSettingsModifier)restored[0];
+            Check(otherRestored.CombatsLeft == 731 && otherRestored.IsUsed == !locked && otherRestored.OtherModSetting == 42,
+                "Another model using the same name tokens must retain its independent values");
             GravitySettings.RestoreEncounterPreferences(9, true);
-            Check(GravityRunSettings.Get(loaded) == requirement, "Changing defaults must not change an existing run");
-            Check(GravityRunSettings.GetLockEncounters(loaded) == lockEncounters, "Changing defaults must not change an existing lock");
+            GravitySettings.LockEncountersAfterBossUnlock = !locked;
+            var lobby = NewLobby();
+            GravityRunSettings.Capture(lobby, restored);
+            // Standard startup drops the input list. Recover only Gravity, while
+            // preserving anything another patch already supplied at the boundary.
+            var bridged = GravityRunSettings.Bridge([otherRestored], lobby);
+            Check(ReferenceEquals(bridged[0], otherRestored), "Startup bridge must preserve other modifiers by identity");
+            Check(GravityRunSettings.Bridge([], lobby).Count == 1, "Bridge must not globally enable lobby modifiers");
+            var state = NewState(bridged);
+            GravityRunSettings.InitializeMultiplayer(state, lobby);
+            GravityRunSettings.Initialize(state);
+            Verify(state, requirement, locked);
+            Check(GravitySettings.NextRunRequirement == 9 && GravitySettings.LockEncountersAfterBossUnlock == !locked,
+                "Receiving host settings must not overwrite personal defaults");
+            Check(HideSettingsModifierPatch.Visible(state.Modifiers).SequenceEqual([otherRestored]),
+                "Only Gravity's internal snapshot must be hidden");
+            var save = Save(state);
+            var json = JsonSerializationUtility.ToJson(save);
+            Check(!json.Contains("gravity_encounters") && !json.Contains("gravity_lock_encounters"),
+                "New JSON must stop writing legacy fields");
+            var loaded = JsonSerializer.Deserialize<SerializableRun>(json, JsonSerializationUtility.Options)!;
+            var loadedState = RunState.FromSerializable(loaded);
+            Verify(loadedState, requirement, locked);
+            // SerializableRun is the native payload used for save/load and reconnect.
+            writer.Reset();
+            save.Serialize(writer);
+            writer.WriteInt(123456);
+            reader.Reset(writer.Buffer);
+            var reconnect = new SerializableRun();
+            reconnect.Deserialize(reader);
+            Check(reader.ReadInt() == 123456, "Native reconnect payload must retain alignment");
+            var rejoined = RunState.FromSerializable(reconnect);
+            Verify(rejoined, requirement, locked);
+            GravitySettings.RestoreEncounterPreferences(5, true);
+            GravitySettings.LockEncountersAfterBossUnlock = !locked;
+            GravityRunSettings.Initialize(state);
+            Verify(state, requirement, locked);
         }
-        var legacy = (SerializableExtraRunFields)JsonSerializer.Deserialize("{}", info)!;
-        Check(GravityRunSettings.Get(ExtraRunFields.FromSerializable(legacy)) == 15, "Legacy saves retain 15 regardless of current defaults");
-        Check(!GravityRunSettings.GetLockEncounters(ExtraRunFields.FromSerializable(legacy)), "Legacy saves must default to continued exploration");
-        var oldSnapshot = (SerializableExtraRunFields)JsonSerializer.Deserialize("{\"gravity_encounters\":7}", info)!;
-        Check(GravityRunSettings.Get(oldSnapshot) == 7 && !GravityRunSettings.GetLockEncounters(oldSnapshot),
-            "Existing snapshots without the lock must retain their requirement and continued exploration");
-        var reversed = (SerializableExtraRunFields)JsonSerializer.Deserialize("{\"gravity_lock_encounters\":true,\"gravity_encounters\":7}", info)!;
-        Check(GravityRunSettings.Get(reversed) == 7 && GravityRunSettings.GetLockEncounters(reversed),
-            "Snapshot properties must load in either order");
-        var invalid = (SerializableExtraRunFields)JsonSerializer.Deserialize("{\"gravity_encounters\":-22}", info)!;
-        Check(GravityRunSettings.Get(invalid) == 15, "Invalid saved requirements must fall back safely");
-        RunState NewState()
-        {
-            var state = (RunState)RuntimeHelpers.GetUninitializedObject(typeof(RunState));
-            AccessTools.Property(typeof(RunState), nameof(RunState.ExtraFields)).SetValue(state, new ExtraRunFields());
-            return state;
-        }
-        GravitySettings.RestoreEncounterPreferences(7, true);
-        GravitySettings.LockEncountersAfterBossUnlock = true;
-        var active = NewState();
-        GravityRunSettings.Initialize(active);
-        GravitySettings.RestoreEncounterPreferences(11, true);
-        GravitySettings.LockEncountersAfterBossUnlock = false;
-        GravityRunSettings.Initialize(active);
-        var next = NewState();
-        GravityRunSettings.Initialize(next);
-        Check(GravityRunSettings.Get(active.ExtraFields) == 7 && GravityRunSettings.Get(next.ExtraFields) == 11,
-            "Only a new playthrough should snapshot edited defaults");
-        Check(GravityRunSettings.GetLockEncounters(active.ExtraFields) && !GravityRunSettings.GetLockEncounters(next.ExtraFields),
-            "Only a new playthrough should snapshot an edited encounter lock");
-        GravitySettings.RestoreEncounterPreferences(15, true);
+        VerifyFallbackAndLegacy();
         VerifyVersionMatching();
-        Console.WriteLine("Passed native JSON, save conversion, network packet, lobby rule, and next-run isolation checks.");
-    }
-
-    private static void VerifyMissingLobbySettings()
-    {
-        var receive = AccessTools.Method(typeof(ReceiveLobbySettingsPatch), "Prefix");
-        var initialize = AccessTools.Method(typeof(MultiplayerRunSettingsPatch), "Prefix");
-        GravitySettings.RestoreEncounterPreferences(3, true);
-        GravitySettings.LockEncountersAfterBossUnlock = true;
-
-        // Cover both a missing receive hook and a received message lacking its snapshot.
-        foreach (var receivedMessage in new[] { false, true })
-        {
-            var lobby = NewClientLobby();
-            if (receivedMessage)
-            {
-                var message = new LobbyBeginRunMessage { modifiers = [] };
-                receive.Invoke(null, [lobby, message]);
-                Check(!GravityRunSettings.TryCopy(lobby, new object()),
-                    "Missing message settings must not manufacture a host snapshot of 15");
-            }
-            var state = NewState();
-            initialize.Invoke(null, [state, lobby]);
-            Check(GravityRunSettings.Get(state.ExtraFields) == 3
-                && GravityRunSettings.GetLockEncounters(state.ExtraFields),
-                "Missing host settings must fall back to the client's configured rules");
-            GravitySettings.RestoreEncounterPreferences(9, true);
-            GravityRunSettings.Initialize(state);
-            Check(GravityRunSettings.Get(state.ExtraFields) == 3,
-                "Fallback rules must be snapshotted, not follow later preference changes");
-            var reloaded = ExtraRunFields.FromSerializable(state.ExtraFields.ToSerializable());
-            Check(GravityRunSettings.Get(reloaded) == 3 && GravityRunSettings.GetLockEncounters(reloaded),
-                "Fallback rules must survive save conversion");
-            GravitySettings.RestoreEncounterPreferences(3, true);
-        }
-
-        foreach (var hostRequirement in new[] { 0, -1, 3, 15, 99 })
-        {
-            var lobby = NewClientLobby();
-            var message = new LobbyBeginRunMessage { modifiers = [] };
-            GravityRunSettings.Set(message.modifiers, hostRequirement, false);
-            receive.Invoke(null, [lobby, message]);
-            var state = NewState();
-            initialize.Invoke(null, [state, lobby]);
-            GravityRunSettings.Initialize(state);
-            Check(GravityRunSettings.Get(state.ExtraFields) == hostRequirement
-                && !GravityRunSettings.GetLockEncounters(state.ExtraFields),
-                "Received host rules, including 15, must override the client's preferences");
-            Check(GravitySettings.NextRunRequirement == 3 && GravitySettings.LockEncountersAfterBossUnlock,
-                "Host rules must not overwrite the client's personal preferences");
-        }
         GravitySettings.RestoreEncounterPreferences(15, true);
         GravitySettings.LockEncountersAfterBossUnlock = false;
-        Console.WriteLine("Passed missing-host fallback and host-rule precedence checks.");
-
-        static StartRunLobby NewClientLobby()
-        {
-            var lobby = (StartRunLobby)RuntimeHelpers.GetUninitializedObject(typeof(StartRunLobby));
-            AccessTools.Field(typeof(StartRunLobby), "<NetService>k__BackingField").SetValue(lobby,
-                RuntimeHelpers.GetUninitializedObject(typeof(NetClientGameService)));
-            return lobby;
-        }
-        static RunState NewState()
-        {
-            var state = (RunState)RuntimeHelpers.GetUninitializedObject(typeof(RunState));
-            AccessTools.Property(typeof(RunState), nameof(RunState.ExtraFields)).SetValue(state, new ExtraRunFields());
-            return state;
-        }
+        Console.WriteLine("Passed native modifier discovery, registry preservation, 16 lobby/save/reconnect round trips, coexistence, fallback and legacy migration checks.");
     }
 
-    private static void VerifyLobbyMessageTransport()
+    private static void VerifyFallbackAndLegacy()
     {
-        GravitySettings.RestoreEncounterPreferences(3, true);
-        var message = new LobbyBeginRunMessage { playersInLobby = [], modifiers = [], seed = "gravity-test", act1 = "test" };
-        var writer = new PacketWriter();
-        message.Serialize(writer);
-        writer.WriteInt(654321);
-        var reader = new PacketReader();
-        reader.Reset(writer.Buffer);
-        // NetMessageBus creates a boxed struct and deserializes through INetMessage.
-        INetMessage received = (INetMessage)Activator.CreateInstance(typeof(LobbyBeginRunMessage))!;
-        received.Deserialize(reader);
-        var copy = (LobbyBeginRunMessage)received;
-        Check(GravityRunSettings.Get(copy.modifiers) == 3,
-            $"Boxed lobby message lost host requirement: expected 3, got {GravityRunSettings.Get(copy.modifiers)}");
-        Check(reader.ReadInt() == 654321, "Boxed lobby message lost packet alignment");
-        // Initialize only the message under test without booting the game's mod loader.
-        var cacheField = AccessTools.Field(typeof(MessageTypes), "_cache");
-        var previousCache = cacheField.GetValue(null);
-        var cache = RuntimeHelpers.GetUninitializedObject(cacheField.FieldType);
-        AccessTools.Field(cacheField.FieldType, "_typeToId").SetValue(cache,
-            new Dictionary<Type, int> { [typeof(LobbyBeginRunMessage)] = 0 });
-        AccessTools.Field(cacheField.FieldType, "_idToType").SetValue(cache,
-            new List<Type> { typeof(LobbyBeginRunMessage) });
-        cacheField.SetValue(null, cache);
-        try
+        var absentLock = GravitySettingsModifier.Create(15, false).ToSerializable();
+        absentLock.Props!.bools = null;
+        foreach (var modifiers in new List<ModifierModel>[] { [],
+            [GravitySettingsModifier.Create(-22, true)],
+            [ModifierModel.FromSerializable(absentLock)],
+            [GravitySettingsModifier.Create(3, true), GravitySettingsModifier.Create(4, false)] })
         {
-            // Avoid the constructor's Godot logger; these packet methods only use reader/writer.
-            var bus = (NetMessageBus)RuntimeHelpers.GetUninitializedObject(typeof(NetMessageBus));
-            AccessTools.Field(typeof(NetMessageBus), "_reader").SetValue(bus, new PacketReader());
-            AccessTools.Field(typeof(NetMessageBus), "_writer").SetValue(bus, new PacketWriter());
-            var packet = bus.SerializeMessage(1, message, out var length);
-            Check(bus.TryDeserializeMessage(packet[..length], out var dispatched, out var sender),
-                "Native message bus could not deserialize the lobby message");
-            Check(sender == 1 && GravityRunSettings.Get(((LobbyBeginRunMessage)dispatched!).modifiers) == 3,
-                "Native message bus lost the host's requirement");
+            GravitySettings.RestoreEncounterPreferences(3, true);
+            GravitySettings.LockEncountersAfterBossUnlock = true;
+            var lobby = NewLobby();
+            GravityRunSettings.Capture(lobby, modifiers);
+            GravitySettings.RestoreEncounterPreferences(9, true);
+            GravitySettings.LockEncountersAfterBossUnlock = false;
+            var state = NewState();
+            GravityRunSettings.InitializeMultiplayer(state, lobby);
+            GravityRunSettings.Initialize(state);
+            Verify(state, 3, true);
+            var serializable = GravityRunSettings.Snapshot(state.Modifiers)!.ToSerializable();
+            var loaded = NewState([ModifierModel.FromSerializable(serializable)]);
+            Verify(loaded, 3, true);
         }
-        finally
+        foreach (var (json, requirement, locked) in new[] {
+            ("{}", 15, false), ("{\"gravity_encounters\":7}", 7, false),
+            ("{\"gravity_lock_encounters\":true,\"gravity_encounters\":7}", 7, true),
+            ("{\"gravity_encounters\":-22}", 15, false) })
         {
-            cacheField.SetValue(null, previousCache);
+            var fields = JsonSerializer.Deserialize<SerializableExtraRunFields>(json, JsonSerializationUtility.Options)!;
+            var legacySave = Save(NewState());
+            legacySave.ExtraFields = fields;
+            var state = RunState.FromSerializable(legacySave);
+            Verify(state, requirement, locked);
+            var newer = NewState([GravitySettingsModifier.Create(0, false)]);
+            GravityRunSettings.Load(newer, new SerializableRun { ExtraFields = fields });
+            Verify(newer, 0, false);
         }
-        GravitySettings.RestoreEncounterPreferences(15, true);
+        var missingHook = NewState();
+        GravityRunSettings.InitializeMultiplayer(missingHook, NewLobby());
+        Verify(missingHook, 9, false);
     }
+
+    internal static RunState NewState(IReadOnlyList<ModifierModel>? modifiers = null)
+    {
+        return RunState.CreateForNewRun([], [], modifiers ?? [], GameMode.Standard, 0, "GRAVITYTEST");
+    }
+
+    internal static SerializableRun Save(RunState state) => new()
+    {
+        Modifiers = state.Modifiers.Select(m => m.ToSerializable()).ToList(),
+        Players = state.Players.Select(p => p.ToSerializable()).ToList(),
+        SerializableRng = state.Rng.ToSerializable(),
+        SerializableOdds = state.Odds.ToSerializable(),
+        SerializableSharedRelicGrabBag = state.SharedRelicGrabBag.ToSerializable(),
+        ExtraFields = state.ExtraFields.ToSerializable(),
+        GameMode = state.GameMode,
+    };
+
+    private static StartRunLobby NewLobby()
+    {
+        var lobby = (StartRunLobby)RuntimeHelpers.GetUninitializedObject(typeof(StartRunLobby));
+        AccessTools.Field(typeof(StartRunLobby), "<NetService>k__BackingField").SetValue(lobby,
+            RuntimeHelpers.GetUninitializedObject(typeof(NetClientGameService)));
+        return lobby;
+    }
+
+    private static void Verify(RunState state, int requirement, bool locked) =>
+        Check(GravityRunSettings.Get(state) == requirement && GravityRunSettings.GetLockEncounters(state) == locked,
+            $"Expected {requirement}/{locked}, got {GravityRunSettings.Get(state)}/{GravityRunSettings.GetLockEncounters(state)}");
 
     private static void VerifyPreferences()
     {
@@ -284,6 +267,7 @@ internal static class SettingsTests
         GravitySettings.RestoreEncounterPreferences(15, true);
     }
 
+
     private static void VerifyVersionMatching()
     {
         var peerType = typeof(ConnectionFailureExtraInfo).Assembly
@@ -319,4 +303,12 @@ internal static class SettingsTests
     {
         if (!condition) throw new Exception(message);
     }
+}
+
+// A second mod's model with independently stored values sharing native name tokens.
+public sealed class OtherSettingsModifier : ModifierModel
+{
+    [SavedProperty] public int CombatsLeft { get; set; }
+    [SavedProperty] public bool IsUsed { get; set; }
+    [SavedProperty] public int OtherModSetting { get; set; } = 42;
 }

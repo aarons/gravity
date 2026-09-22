@@ -20,6 +20,7 @@ internal static class GameRulesTests
         var map = new TestMap();
         run.Map = map;
         AccessTools.Property(typeof(RunState), nameof(RunState.ExtraFields)).SetValue(run, new ExtraRunFields());
+        AccessTools.Property(typeof(RunState), nameof(RunState.Modifiers)).SetValue(run, Array.Empty<MegaCrit.Sts2.Core.Models.ModifierModel>());
         GravityRunSettings.Initialize(run);
         var first = MapTravel.GetTravelablePointsFrom(run, map.StartingMapPoint).ToArray();
         Check(first.SequenceEqual([map.StartingMapPoint]), "Patched API must require the Ancient");
@@ -41,18 +42,18 @@ internal static class GameRulesTests
         }
         var unlocked = MapTravel.GetTravelablePointsFrom(run, run.CurrentMapPoint!).ToArray();
         Check(unlocked.Length == 46 && unlocked.Contains(map.BossMapPoint), "Boss unlock must preserve the remaining encounters");
-        GravityRunSettings.Set(run.ExtraFields, 16, true);
+        GravityRunSettings.Set(run, 16, true);
         Check(MapTravel.GetTravelablePointsFrom(run, run.CurrentMapPoint!).Count() == 45,
             "Lock must allow encounters before the requirement is met");
-        GravityRunSettings.Set(run.ExtraFields, 15, true);
+        GravityRunSettings.Set(run, 15, true);
         Check(MapTravel.GetTravelablePointsFrom(run, run.CurrentMapPoint!).SequenceEqual([map.BossMapPoint]),
             "Lock must remove normal encounters from the patched travel API when the boss unlocks");
-        GravityRunSettings.Set(run.ExtraFields, 1, true);
+        GravityRunSettings.Set(run, 1, true);
         Check(MapTravel.GetTravelablePointsFrom(run, run.CurrentMapPoint!).SequenceEqual([map.BossMapPoint]),
             "Lock must also hold above the requirement");
         foreach (var requirement in new[] { 1, 15, 60, 1000, -1 })
         {
-            GravityRunSettings.Set(run.ExtraFields, requirement);
+            GravityRunSettings.Set(run, requirement);
             GravitySettings.RestoreEncounterPreferences(0, true);
             var capped = requirement == -1 ? 60 : Math.Min(requirement, 60);
             Check(GravityRules.Progress(run).RequiredEncounters == capped, "Rules must cap the snapshot to the act pool");
@@ -61,19 +62,19 @@ internal static class GameRulesTests
             Check(MapTravel.GetTravelablePointsFrom(run, run.CurrentMapPoint!).Contains(map.BossMapPoint) == (15 >= capped),
                 "Travel must use the same snapshot as the counter");
         }
-        GravityRunSettings.Set(run.ExtraFields, 0, true);
+        GravityRunSettings.Set(run, 0, true);
         Check(MapTravel.GetTravelablePointsFrom(run, run.CurrentMapPoint!).Count() == 46,
             "Always-unlocked bosses must ignore the encounter lock");
         Check(GravityRules.Progress(run).RequiredEncounters == 0, "Disabled requirement did not reach travel rules");
         Check(GravityTopBarProgress.Text(run) == "15", "Off must hide the denominator");
-        GravityRunSettings.Set(run.ExtraFields, 15);
+        GravityRunSettings.Set(run, 15);
         foreach (var point in choices.Except(order).Take(2))
         {
             run.AddVisitedMapCoord(point.coord);
             Check(GravityTopBarProgress.Text(run) == "15/15", "Extra encounters must keep the completed goal display");
         }
         Check(GravityRules.Progress(run).EncountersVisited == 17, "Display capping must preserve the actual encounter count");
-        GravityRunSettings.Set(run.ExtraFields, 0);
+        GravityRunSettings.Set(run, 0);
         Check(GravityTopBarProgress.Text(run) == "17", "An unrestricted counter must continue counting past 15");
         GravitySettings.RestoreEncounterPreferences(15, true);
         run.AddVisitedMapCoord(map.BossMapPoint.coord);

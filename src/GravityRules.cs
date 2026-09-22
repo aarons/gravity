@@ -47,8 +47,8 @@ internal static class GravityRules
         run.Map.StartingMapPoint.coord,
         Encounters(run.Map).Select(point => point.coord).ToArray(),
         Bosses(run.Map).Select(point => point.coord).ToArray(),
-        run.VisitedMapCoords, GravityRunSettings.Get(run.ExtraFields),
-        GravityRunSettings.GetLockEncounters(run.ExtraFields));
+        run.VisitedMapCoords, GravityRunSettings.Get(run),
+        GravityRunSettings.GetLockEncounters(run));
 
     public static int VisitIndex(RunState run, MapCoord coord)
     {

@@ -57,7 +57,7 @@ mod discovery or the full lobby-to-run transition.
   so registering the model does not automatically add it to those pools.
 
 These findings establish API feasibility, not full lifecycle or multiplayer
-compatibility. No saved-modifier migration has been implemented yet.
+compatibility. The migration is now implemented; see the implementation checkpoint below.
 
 ## Todo
 
@@ -65,25 +65,25 @@ compatibility. No saved-modifier migration has been implemented yet.
   registration, startup, and load/rejoin behavior on v0.107.1. Compare with beta,
   use the shared API surface, and isolate necessary branch differences in a small
   compatibility helper. Treat equivalent sync behavior as a release requirement.
-- [ ] **Add the modifier.** Store encounter requirement and encounter locking as
+- [x] **Add the modifier.** Store encounter requirement and encounter locking as
   `[SavedProperty]` values and explicitly register them in the saved-property cache.
   Keep appearance settings personal.
-- [ ] **Capture rules once.** Add the modifier before the host starts the run; use
+- [x] **Capture rules once.** Add the modifier before the host starts the run; use
   local preferences for solo runs. Clients consume the host’s modifier. Later
   preference changes must not affect the active run. Preserve Gravity’s snapshot
   through the standard character-select-to-run transition without discarding or
   modifying other mods’ data.
-- [ ] **Use the modifier consistently.** Read active rules from it for encounter
+- [x] **Use the modifier consistently.** Read active rules from it for encounter
   selection, boss unlocking, and progress UI. Verify persistence across act
   changes, saves, loading, and reconnects.
-- [ ] **Implement the agreed fallback.** If the new-run snapshot is missing or
+- [x] **Implement the agreed fallback.** If the new-run snapshot is missing or
   invalid, capture the peer’s current local requirement and locking settings and
   log the fallback. Let startup continue without an additional compatibility gate.
   Received valid host settings always take precedence, including a requirement of
   15 or locking disabled. Do not overwrite personal preferences.
-- [ ] **Preserve existing saves.** Migrate Gravity’s saved extra fields into the
+- [x] **Preserve existing saves.** Migrate Gravity’s saved extra fields into the
   modifier. Retain historical defaults for saves without Gravity settings.
-- [ ] **Remove superseded sync code.** Retire custom lobby packet extensions and
+- [x] **Remove superseded sync code.** Retire custom lobby packet extensions and
   obsolete snapshot transfers once the replacement works. Retain the narrow bridge
   needed to preserve Gravity’s modifier through standard startup, plus legacy
   save-reading code needed for migration.
@@ -116,3 +116,38 @@ Native serialization was inspected on v0.111.0 and v0.107.1, with the isolated s
 probe described above. Full lifecycle behavior and the same candidate DLL on both
 branches still need verification; the upstream example is a reference, not proof
 of compatibility or reliability for Gravity.
+
+## Implementation checkpoint
+
+The saved-modifier migration is implemented in `src/GravitySettingsModifier.cs`
+and `src/GravityRunSettings.cs`. The custom packet extensions and extra-field
+writes are removed; legacy JSON fields are read during run-load migration.
+
+To avoid perturbing other mods' saved-property registration, the internal model
+uses private native wire-name tokens `CombatsLeft` (requirement) and `IsUsed`
+(locking). Values are per model. These names already exist on stable; registration
+adds only Gravity's type-to-property metadata, not global property names or IDs.
+The registration check fails explicitly if a future game removes either token.
+No shared registry is sorted, rebuilt, or resized by Gravity.
+
+Host capture runs in a prefix on `BeginRunForAllPlayers`. `BeginRunLocally` captures
+the received model per lobby. Narrow prefixes on the standard screen and game entry points bridge the discarded
+modifier argument across the async transition (lobby identity in multiplayer, act-list
+identity in solo). They preserve modifiers already supplied there and recover only Gravity. Multiplayer setup also covers
+the bootstrap path. Standard-run classification is unchanged; top-bar display
+filters only Gravity, without modifying the active modifier collection.
+
+Stable offline coverage now includes native model discovery/ID setup (no manual
+packet-ID seeding), unchanged saved-property IDs and width, 16 native lobby/save/
+reconnect payload combinations, legacy migration, invalid/missing/duplicate
+snapshots, fallback isolation, and another model's independent saved properties.
+Eight lifecycle cases execute real host send, client receive, and lobby-local
+startup methods with deliberately different defaults and a second packet extension.
+The fixture invokes the patched screen and game entry points but replaces sockets,
+profile writes, logging, and scene work; native save/load uses empty-player fixtures. This is not proof of live multiplayer.
+
+Still required: real character-select transition and multiplayer acceptance on
+stable, same-candidate beta checks, save/reconnect with real players, and testing
+with actual multiplayer mods. No branch switch, game install, or publication was
+performed as part of the implementation checkpoint. Update this section as those
+checks are completed.

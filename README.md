@@ -59,9 +59,8 @@ The host’s settings are used in a co-op game.** A new run snapshots both rules
 later acts, saves, and reloads retain them. Existing saves without a requirement
 snapshot use 15; saves without the lock setting allow continued exploration.
 Clients' personal defaults are not overwritten.
-If a new co-op run reaches client initialization without the host's settings,
-Gravity uses the client's configured defaults for that run and writes a diagnostic
-message to the log. Matching local settings provide a fallback in this case;
+If a new co-op run receives a missing or invalid settings snapshot, Gravity uses
+that player's current configured defaults once for the run and logs the fallback. Matching local settings provide a fallback in this case;
 received host settings always take precedence, including the default of 15.
 
 If **BaseLib** or **RitsuLib** is installed and enabled, Gravity also appears in
@@ -112,7 +111,8 @@ Escape/back or Done. Changes save automatically; leaving a settings panel also
 commits a number still being edited.
 
 Preferences persist in `user://gravity.cfg`. The active encounter requirement and
-lock are stored in the normal run save's extra fields and included in multiplayer data.
+lock travel in an internal saved modifier through the game's normal startup, save,
+and reconnect data. Older Gravity saves are migrated when loaded.
 All co-op players must use the same Gravity version. Color and pulse are personal.
 
 Requires the Steam game and .NET 9 SDK to build. References the installed game
@@ -126,12 +126,29 @@ stable **v0.107.1**, it failed during initialization because the Mods panel has
 no `NModInfoContainer.Clear` method. That cleanup patch is now conditional;
 row changes still clean up Gravity's settings panel on both branches.
 
-The compatibility build passes all 31 applicable patches and the travel,
-save/load, packet, lobby-settings, and optional-settings checks on stable
-**v0.107.1**. The beta-only native handshake comparison test is explicitly
-skipped on stable. Startup, the Mods settings panel, and map behavior have also
-been confirmed in-game on stable. A beta recheck of this build is still pending.
+The saved-modifier multiplayer migration builds and passes patch installation,
+travel, native model discovery, save/load, reconnect-payload, lobby lifecycle, and
+optional-settings checks on stable **v0.107.1**. The lifecycle fixture executes the
+native host send, client receive, and local lobby start with different defaults;
+network sockets and scene work are stand-ins. The fixture invokes the patched
+screen and game-entry methods, but the real UI transition still needs in-game testing.
+The beta-only native handshake comparison is skipped on stable.
+
+Live co-op with different host/client settings, actual reconnects, and a beta test
+of the same candidate DLL remain required before calling this migration verified.
+Prior stable in-game testing covered the previous implementation, not this migration.
 Earlier game versions have not been verified.
+
+Gravity no longer appends bytes to shared lobby or extra-run-field packets. Its
+private saved-property wire names (`CombatsLeft` and `IsUsed`) reuse existing native
+name tokens, with values scoped to Gravity's own modifier. Registration adds no
+property-name IDs and changes no existing IDs or bit widths. Tests verify that
+another modifier using the same tokens plus its own property keeps its values,
+and that a separate lobby-packet extension still works. Startup preserves other
+mods' supplied modifiers and recovers only Gravity's discarded snapshot; it does
+not enable all lobby modifiers in standard runs. The internal modifier is excluded
+from the top bar and native modifier-selection pools, and the run remains Standard.
+These checks do not establish compatibility with every multiplayer mod.
 
 If the game reports that Gravity's DLL assembly failed to initialize, check the
 game version and the exception in `SlayTheSpire2/logs/godot.log`. This message
@@ -171,6 +188,12 @@ python3 scripts/validate_localization.py --english-only
 
 `GravityIntegrationTests` installs then removes the Harmony patches in a separate
 process against your installed game assemblies; it does not open or change a run.
+To check the same Release candidate against a second game installation, first build
+the harness with `dotnet build -c Release tests/GravityIntegrationTests`. Then set
+`GRAVITY_TEST_GAME_DATA` to that installation's data directory and execute
+`dotnet tests/GravityIntegrationTests/bin/Release/net9.0/GravityIntegrationTests.dll`
+without rebuilding.
+Use `Sts2DataDir` when building against a different installation.
 
 In-game acceptance checks:
 
