@@ -15,7 +15,7 @@ internal static class PreviewDownloads
         var interval = TimeSpan.FromSeconds(15);
         var verified = new HashSet<Preview>();
         string failure = "Preview availability could not be confirmed";
-        for (var attempt = 0; attempt < 8; attempt++)
+        for (var attempt = 0; attempt < 7; attempt++)
         {
             if (attempt > 0)
             {
@@ -24,7 +24,7 @@ internal static class PreviewDownloads
                 wait(interval);
             }
             // Refresh once near the end, rather than querying Steam on every HTTP retry.
-            var finalAttempt = attempt == 7 || deadline - elapsed() <= TimeSpan.FromSeconds(30);
+            var finalAttempt = attempt == 6 || deadline - elapsed() <= TimeSpan.FromSeconds(30);
             if (finalAttempt) previews = refresh();
             var pending = previews.Where(p => p.Type == PreviewGallery.ImageType && !verified.Contains(p)).ToArray();
             foreach (var preview in pending)

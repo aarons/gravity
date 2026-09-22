@@ -6,13 +6,13 @@ internal static class PreviewDownloadTests
     internal static void Run()
     {
         Check((call, _) => call < 3 ? Response(404) : Image(), succeeds: true, expectedCalls: 3, expectedWaits: 2);
-        Check((_, _) => Response(404), succeeds: false, expectedCalls: 8, expectedWaits: 7, expectedRefreshes: 1);
+        Check((_, _) => Response(404), succeeds: false, expectedCalls: 7, expectedWaits: 6, expectedRefreshes: 1);
         Check((_, request) => request.RequestUri!.AbsolutePath == "/fresh" ? Image() : Response(404),
-            succeeds: true, expectedCalls: 8, expectedWaits: 7, expectedRefreshes: 1);
+            succeeds: true, expectedCalls: 7, expectedWaits: 6, expectedRefreshes: 1);
         Check((_, _) => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("<html>missing image</html>") },
-            succeeds: false, expectedCalls: 8, expectedWaits: 7, expectedRefreshes: 1);
+            succeeds: false, expectedCalls: 7, expectedWaits: 6, expectedRefreshes: 1);
         Check((_, _) => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("GIF") },
-            succeeds: false, expectedCalls: 8, expectedWaits: 7, expectedRefreshes: 1);
+            succeeds: false, expectedCalls: 7, expectedWaits: 6, expectedRefreshes: 1);
         Check((_, _) => Response(429), succeeds: false, expectedCalls: 1, expectedWaits: 0);
         Check((_, _) =>
         {
@@ -20,7 +20,7 @@ internal static class PreviewDownloadTests
             response.Headers.RetryAfter = new(TimeSpan.FromMinutes(5));
             return response;
         }, succeeds: false, expectedCalls: 1, expectedWaits: 0);
-        Check((_, _) => Image(), succeeds: false, expectedCalls: 0, expectedWaits: 7, expectedRefreshes: 1, missingUrl: true);
+        Check((_, _) => Image(), succeeds: false, expectedCalls: 0, expectedWaits: 6, expectedRefreshes: 1, missingUrl: true);
 
         // Successful URLs and video previews are not polled along with the failing image.
         var clock = TimeSpan.Zero;

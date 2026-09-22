@@ -385,7 +385,7 @@ by reading them back, and keeps retry receipts in `workshop/.release-state/`.
 Preserve those receipts for retries. Previously verified live content/listings
 are skipped when still current. Gallery checks verify filenames and order
 through Steam, then fetch image headers from the returned URLs. Unavailable images
-are checked again after 15 seconds, with at most eight attempts and a two-minute
+are checked again after 15 seconds, with at most seven attempts and a two-minute
 HTTP verification budget for the gallery. Successful images are not polled again;
 Steam metadata is refreshed once before the final attempt (the Steam query has its
 own timeout). Rate limiting or a Retry-After response stops verification immediately.
