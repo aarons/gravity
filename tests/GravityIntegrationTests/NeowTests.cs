@@ -1,17 +1,53 @@
 using Gravity;
 using HarmonyLib;
+using System.Runtime.CompilerServices;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Events;
 using MegaCrit.Sts2.Core.Models;
-using MegaCrit.Sts2.Core.Models.Characters;
+using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Models.Events;
 using MegaCrit.Sts2.Core.Random;
 using MegaCrit.Sts2.Core.Runs;
-using MegaCrit.Sts2.Core.Unlocks;
 
 internal static class NeowTests
 {
     public static void Run()
+    {
+        // Keep the actual Neow selection method and RNG. Stand in for scene-backed
+        // player inventories, localized option UI, and the base Ancient description.
+        var fixture = new Harmony("Gravity.NeowFixture");
+        fixture.Patch(AccessTools.Method(typeof(EventOption), nameof(EventOption.FromRelic)),
+            prefix: new HarmonyMethod(typeof(NeowTests), nameof(RelicOption)));
+        fixture.Patch(AccessTools.PropertyGetter(typeof(AncientEventModel), nameof(AncientEventModel.InitialDescription)),
+            prefix: new HarmonyMethod(typeof(NeowTests), nameof(AncientDescription)));
+        foreach (var method in typeof(RelicModel).Assembly.GetTypes()
+            .Where(type => typeof(RelicModel).IsAssignableFrom(type))
+            .Select(type => AccessTools.DeclaredMethod(type, nameof(RelicModel.IsAllowedAtNeow)))
+            .Where(method => method != null))
+            fixture.Patch(method, prefix: new HarmonyMethod(typeof(NeowTests), nameof(AllowRelic)));
+        try { VerifyChoices(); }
+        finally { fixture.UnpatchAll(fixture.Id); }
+    }
+
+    private static bool RelicOption(RelicModel relic, ref EventOption __result)
+    {
+        __result = ((EventOption)RuntimeHelpers.GetUninitializedObject(typeof(EventOption))).WithRelic(relic);
+        return false;
+    }
+
+    private static bool AncientDescription(ref LocString __result)
+    {
+        __result = new LocString("ancients", "NEOW.pages.INITIAL.description");
+        return false;
+    }
+
+    private static bool AllowRelic(ref bool __result)
+    {
+        __result = true;
+        return false;
+    }
+
+    private static void VerifyChoices()
     {
         var baseline = Generate([]);
         var settings = GravitySettingsModifier.Create(15, false);
@@ -33,9 +69,9 @@ internal static class NeowTests
 
     private static (IReadOnlyList<EventOption> Options, string Description) Generate(IReadOnlyList<ModifierModel> modifiers)
     {
-        var player = Player.CreateForNewRun<Ironclad>(UnlockState.all, 1);
-        var run = RunState.CreateForNewRun([player], [], modifiers, GameMode.Standard,
-            0, "GRAVITYTEST");
+        var player = (Player)RuntimeHelpers.GetUninitializedObject(typeof(Player));
+        var run = SettingsTests.NewState(modifiers);
+        AccessTools.Field(typeof(Player), "_runState").SetValue(player, run);
         var neow = (Neow)ModelDb.Event<Neow>().ToMutable();
         AccessTools.Property(typeof(EventModel), nameof(EventModel.Owner)).SetValue(neow, player);
         AccessTools.Property(typeof(EventModel), nameof(EventModel.Rng)).SetValue(neow, new Rng(123));
