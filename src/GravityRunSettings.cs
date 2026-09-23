@@ -1,159 +1,152 @@
-using System.Reflection;
-using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Models;
-using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
-using MegaCrit.Sts2.Core.Nodes;
-using MegaCrit.Sts2.Core.Nodes.Screens.CharacterSelect;
-using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves;
 using MegaCrit.Sts2.Core.Saves.Runs;
 
 namespace Gravity;
 
+internal sealed record GravitySettingsSnapshot(int Requirement, bool LockEncounters)
+{
+    internal const int Version = 1;
+    internal bool IsValid => Requirement is >= -1 and <= 1000;
+    internal static GravitySettingsSnapshot Default => new(15, false);
+    internal static GravitySettingsSnapshot FromPreferences() =>
+        new(GravitySettings.NextRunRequirement, GravitySettings.LockEncountersAfterBossUnlock);
+}
+
 internal static class GravityRunSettings
 {
-    private sealed record LegacyRule(int Requirement = 15, bool LockEncounters = false);
-    private static readonly ConditionalWeakTable<object, LegacyRule> Legacy = new();
-    private static readonly ConditionalWeakTable<StartRunLobby, GravitySettingsModifier> Starting = new();
-    private static readonly ConditionalWeakTable<object, GravitySettingsModifier> StartingSolo = new();
-    private static readonly PropertyInfo ModifiersProperty = AccessTools.Property(typeof(RunState), nameof(RunState.Modifiers));
-
-    internal static GravitySettingsModifier? Snapshot(IEnumerable<ModifierModel> modifiers)
+    private sealed class Data
     {
-        GravitySettingsModifier? snapshot = null;
-        foreach (var modifier in modifiers)
-        {
-            if (modifier is not GravitySettingsModifier candidate) continue;
-            if (snapshot != null || !candidate.IsValid) return null;
-            snapshot = candidate;
-        }
-        return snapshot;
+        internal GravitySettingsSnapshot? Snapshot;
+        internal bool FromNetwork;
+        internal int? LegacyRequirement;
+        internal bool? LegacyLock;
+        internal int? Version;
     }
 
-    public static int Get(RunState run) => Snapshot(run.Modifiers)?.Requirement ?? 15;
-    public static bool GetLockEncounters(RunState run) => Snapshot(run.Modifiers)?.LockEncounters ?? false;
+    // Run data belongs to the run's extra fields, never to a gameplay model or
+    // the player's preferences. The same immutable value follows save conversions.
+    private static readonly ConditionalWeakTable<object, Data> Fields = new();
+    private static readonly ConditionalWeakTable<StartRunLobby, GravitySettingsSnapshot> Starting = new();
+    private static readonly ModelId LegacyId = new("MODIFIER", "GRAVITY_SETTINGS_MODIFIER");
+
+    internal static GravitySettingsSnapshot GetSnapshot(RunState run) =>
+        Fields.GetOrCreateValue(run.ExtraFields).Snapshot
+        ?? throw new InvalidOperationException("Gravity run settings have not been initialized.");
+
+    public static int Get(RunState run) => GetSnapshot(run).Requirement;
+    public static bool GetLockEncounters(RunState run) => GetSnapshot(run).LockEncounters;
 
     internal static void Set(RunState run, int requirement, bool locked = false) =>
-        Attach(run, GravitySettingsModifier.Create(requirement, locked));
+        Store(run.ExtraFields, new(requirement, locked));
 
-    private static void Attach(RunState run, GravitySettingsModifier snapshot) =>
-        ModifiersProperty.SetValue(run, Merge(run.Modifiers, snapshot));
+    internal static void Store(object fields, GravitySettingsSnapshot snapshot)
+    {
+        if (!snapshot.IsValid) throw new InvalidDataException("Invalid Gravity run settings.");
+        Fields.GetOrCreateValue(fields).Snapshot = snapshot;
+    }
 
-    internal static IReadOnlyList<ModifierModel> Merge(IEnumerable<ModifierModel> modifiers, GravitySettingsModifier snapshot) =>
-        modifiers.Where(m => m is not GravitySettingsModifier).Append(snapshot).ToArray();
-
+    // Only singleplayer may initialize from personal preferences.
     public static void Initialize(RunState run)
     {
-        if (Snapshot(run.Modifiers) == null) Attach(run, Fallback());
+        var data = Fields.GetOrCreateValue(run.ExtraFields);
+        data.Snapshot ??= GravitySettingsSnapshot.FromPreferences();
     }
 
-    private static GravitySettingsModifier Fallback()
+    internal static void Capture(StartRunLobby lobby, GravitySettingsSnapshot snapshot)
     {
-        var snapshot = GravitySettingsModifier.FromPreferences();
-        Console.WriteLine($"[Gravity] New-run settings snapshot missing or invalid; using local encounter requirement "
-            + $"{snapshot.Requirement} and encounter lock {snapshot.LockEncounters} for this run.");
-        return snapshot;
-    }
-
-    internal static void Capture(StartRunLobby lobby, IEnumerable<ModifierModel> modifiers)
-    {
-        var snapshot = Snapshot(modifiers) ?? Fallback();
         Starting.Remove(lobby);
         Starting.Add(lobby, snapshot);
     }
 
-    // Called only at the standard screen's discarded-modifiers boundary. All modifiers
-    // already supplied at that call site remain; only Gravity is recovered from the lobby.
-    internal static IReadOnlyList<ModifierModel> Bridge(IReadOnlyList<ModifierModel> modifiers, StartRunLobby lobby) =>
-        Starting.TryGetValue(lobby, out var snapshot) ? Merge(modifiers, snapshot) : modifiers;
-
-    internal static void CaptureSolo(IReadOnlyList<ActModel> acts, StartRunLobby lobby)
+    internal static void InitializeMultiplayer(RunState run, StartRunLobby lobby)
     {
-        if (!Starting.TryGetValue(lobby, out var snapshot)) return;
-        StartingSolo.Remove(acts);
-        StartingSolo.Add(acts, snapshot);
+        if (!Starting.TryGetValue(lobby, out var snapshot))
+            throw GravitySettingsSync.Missing(lobby.NetService);
+        Store(run.ExtraFields, snapshot);
+        Starting.Remove(lobby);
     }
 
-    internal static IReadOnlyList<ModifierModel> BridgeSolo(IReadOnlyList<ModifierModel> modifiers, IReadOnlyList<ActModel> acts)
+    internal static void Copy(object source, object destination)
     {
-        if (!StartingSolo.TryGetValue(acts, out var snapshot)) return modifiers;
-        StartingSolo.Remove(acts);
-        return Merge(modifiers, snapshot);
+        if (Fields.TryGetValue(source, out var data) && data.Snapshot != null)
+            Store(destination, data.Snapshot);
     }
 
-    internal static void InitializeMultiplayer(RunState state, StartRunLobby lobby)
+    internal static GravitySettingsSnapshot ReadSave(SerializableRun save)
     {
-        if (Starting.TryGetValue(lobby, out var snapshot)) Attach(state, snapshot);
-        else if (Snapshot(state.Modifiers) == null)
-            Attach(state, lobby.NetService.Type == NetGameType.Client ? Fallback() : GravitySettingsModifier.FromPreferences());
+        var data = Fields.GetOrCreateValue(save.ExtraFields);
+        var legacy = save.Modifiers.Where(m => m.Id == LegacyId).ToArray();
+        if (data.Snapshot == null)
+        {
+            // A network run must be paired with its separate settings message.
+            // Disk saves predating Gravity settings use the original fixed rules.
+            if (data.FromNetwork) throw new InvalidDataException("Missing Gravity settings for a network run.");
+            if (data.Version is int version)
+            {
+                if (version != GravitySettingsSnapshot.Version || data.LegacyRequirement is not int count
+                    || count is < -1 or > 1000 || data.LegacyLock is not bool locked)
+                    throw new JsonException("Invalid or unsupported Gravity run settings.");
+                Store(save.ExtraFields, new(count, locked));
+            }
+            else if (legacy.Length > 0)
+            {
+                var counts = legacy[0].Props?.ints?.Where(p => p.name == "CombatsLeft").ToArray();
+                var locks = legacy[0].Props?.bools?.Where(p => p.name == "IsUsed").ToArray();
+                if (legacy.Length != 1 || counts?.Length != 1 || locks?.Length != 1)
+                    throw new InvalidDataException("Invalid legacy Gravity settings.");
+                Store(save.ExtraFields, new(counts[0].value, locks[0].value));
+            }
+            else
+            {
+                Store(save.ExtraFields, data.LegacyRequirement is int requirement
+                    ? new(requirement is >= -1 and <= 1000 ? requirement : 15, data.LegacyLock ?? false)
+                    : GravitySettingsSnapshot.Default);
+            }
+        }
+        // Remove only our retired data model, before the game resolves model IDs.
+        // Leave every other modifier and its saved properties untouched.
+        if (legacy.Length > 0) save.Modifiers = save.Modifiers.Where(m => m.Id != LegacyId).ToList();
+        return data.Snapshot!;
     }
 
-    internal static void Load(RunState run, SerializableRun save)
-    {
-        if (Snapshot(run.Modifiers) != null) return;
-        var rule = Legacy.TryGetValue(save.ExtraFields, out var stored) ? stored : new LegacyRule();
-        Set(run, rule.Requirement, rule.LockEncounters);
-    }
+    internal static void MarkNetwork(object fields) => Fields.GetOrCreateValue(fields).FromNetwork = true;
 
-    internal static void ReadLegacyRequirement(object owner, int requirement)
+    internal static void ConfigureJson(JsonTypeInfo info)
     {
-        var rule = Legacy.TryGetValue(owner, out var stored) ? stored : new LegacyRule();
-        Legacy.Remove(owner);
-        Legacy.Add(owner, rule with { Requirement = requirement is >= -1 and <= 1000 ? requirement : 15 });
-    }
+        if (info.Type != typeof(SerializableExtraRunFields)) return;
+        // Use the game's existing primitive JSON metadata; no replacement
+        // serializer, model registration, or extension of binary save packets.
+        var version = info.CreateJsonPropertyInfo(typeof(int), "gravity_version");
+        version.Get = _ => GravitySettingsSnapshot.Version;
+        version.Set = (owner, value) => Fields.GetOrCreateValue(owner).Version = (int)value!;
+        version.ShouldSerialize = (owner, _) => Fields.GetOrCreateValue(owner).Snapshot != null;
+        info.Properties.Add(version);
 
-    internal static void ReadLegacyLock(object owner, bool locked)
-    {
-        var rule = Legacy.TryGetValue(owner, out var stored) ? stored : new LegacyRule();
-        Legacy.Remove(owner);
-        Legacy.Add(owner, rule with { LockEncounters = locked });
+        var count = info.CreateJsonPropertyInfo(typeof(int), "gravity_encounters");
+        count.Get = owner => Fields.GetOrCreateValue(owner).Snapshot?.Requirement ?? 15;
+        count.Set = (owner, value) => Fields.GetOrCreateValue(owner).LegacyRequirement = (int)value!;
+        count.ShouldSerialize = version.ShouldSerialize;
+        info.Properties.Add(count);
+
+        var locked = info.CreateJsonPropertyInfo(typeof(bool), "gravity_lock_encounters");
+        locked.Get = owner => Fields.GetOrCreateValue(owner).Snapshot?.LockEncounters ?? false;
+        locked.Set = (owner, value) => Fields.GetOrCreateValue(owner).LegacyLock = (bool)value!;
+        locked.ShouldSerialize = version.ShouldSerialize;
+        info.Properties.Add(locked);
     }
 }
 
-[HarmonyPatch(typeof(StartRunLobby), "BeginRunForAllPlayers")]
-internal static class HostRunSettingsPatch
+[HarmonyPatch(typeof(RunManager), nameof(RunManager.SetUpNewSingleplayer))]
+internal static class SoloRunSettingsPatch
 {
-    private static void Prefix(StartRunLobby __instance, ref List<ModifierModel> modifiers)
-    {
-        if (__instance.NetService.Type == NetGameType.Client) return;
-        modifiers = GravityRunSettings.Merge(modifiers, GravitySettingsModifier.FromPreferences()).ToList();
-    }
-}
-
-[HarmonyPatch(typeof(StartRunLobby), "BeginRunLocally")]
-internal static class CaptureRunSettingsPatch
-{
-    private static void Prefix(StartRunLobby __instance, List<ModifierModel> modifiers) =>
-        GravityRunSettings.Capture(__instance, modifiers);
-}
-
-// The standard screen discards its modifier argument before its async fade. Keep
-// only Gravity's snapshot with the act-list identity passed to the solo entry point.
-// Multiplayer has a lobby argument and can use its lobby-scoped snapshot directly.
-[HarmonyPatch(typeof(NCharacterSelectScreen), nameof(NCharacterSelectScreen.BeginRun))]
-internal static class CaptureStandardRunSettingsPatch
-{
-    private static void Prefix(List<ActModel> acts, StartRunLobby ____lobby) =>
-        GravityRunSettings.CaptureSolo(acts, ____lobby);
-}
-
-[HarmonyPatch(typeof(NGame), nameof(NGame.StartNewSingleplayerRun))]
-internal static class SoloRunSettingsBridgePatch
-{
-    private static void Prefix(IReadOnlyList<ActModel> acts, ref IReadOnlyList<ModifierModel> modifiers) =>
-        modifiers = GravityRunSettings.BridgeSolo(modifiers, acts);
-}
-
-[HarmonyPatch(typeof(NGame), nameof(NGame.StartNewMultiplayerRun))]
-internal static class MultiplayerRunSettingsBridgePatch
-{
-    private static void Prefix(StartRunLobby lobby, ref IReadOnlyList<ModifierModel> modifiers) =>
-        modifiers = GravityRunSettings.Bridge(modifiers, lobby);
+    private static void Prefix(RunState state) => GravityRunSettings.Initialize(state);
 }
 
 [HarmonyPatch(typeof(RunManager), nameof(RunManager.SetUpNewMultiplayer))]
@@ -162,70 +155,34 @@ internal static class MultiplayerRunSettingsPatch
     private static void Prefix(RunState state, StartRunLobby lobby) => GravityRunSettings.InitializeMultiplayer(state, lobby);
 }
 
-[HarmonyPatch(typeof(RunManager), "InitializeNewRun")]
-internal static class NewRunSettingsPatch
-{
-    private static void Prefix(RunManager __instance) => GravityRunSettings.Initialize(__instance.DebugOnlyGetState()!);
-}
-
 [HarmonyPatch(typeof(RunState), nameof(RunState.FromSerializable))]
 internal static class LoadRunSettingsPatch
 {
-    private static void Postfix(SerializableRun save, RunState __result) => GravityRunSettings.Load(__result, save);
+    private static void Prefix(SerializableRun save) => GravityRunSettings.ReadSave(save);
 }
 
-// Read old JSON fields only. New saves and reconnects use native modifier serialization.
+[HarmonyPatch(typeof(ExtraRunFields), nameof(ExtraRunFields.ToSerializable))]
+internal static class SaveRunSettingsPatch
+{
+    private static void Postfix(ExtraRunFields __instance, SerializableExtraRunFields __result) =>
+        GravityRunSettings.Copy(__instance, __result);
+}
+
+[HarmonyPatch(typeof(ExtraRunFields), nameof(ExtraRunFields.FromSerializable))]
+internal static class RestoreRunSettingsPatch
+{
+    private static void Postfix(SerializableExtraRunFields save, ExtraRunFields __result) =>
+        GravityRunSettings.Copy(save, __result);
+}
+
+[HarmonyPatch(typeof(SerializableExtraRunFields), nameof(SerializableExtraRunFields.Deserialize))]
+internal static class NetworkRunSettingsPatch
+{
+    private static void Postfix(SerializableExtraRunFields __instance) => GravityRunSettings.MarkNetwork(__instance);
+}
+
 [HarmonyPatch(typeof(JsonSerializationUtility), nameof(JsonSerializationUtility.AlphabetizeProperties))]
 internal static class RunSettingsJsonPatch
 {
-    private static void Prefix(JsonTypeInfo info)
-    {
-        if (info.Type != typeof(SerializableExtraRunFields)) return;
-        var property = info.CreateJsonPropertyInfo(typeof(int), "gravity_encounters");
-        property.Set = (owner, value) => GravityRunSettings.ReadLegacyRequirement(owner, (int)value!);
-        info.Properties.Add(property);
-        var lockProperty = info.CreateJsonPropertyInfo(typeof(bool), "gravity_lock_encounters");
-        lockProperty.Set = (owner, value) => GravityRunSettings.ReadLegacyLock(owner, (bool)value!);
-        info.Properties.Add(lockProperty);
-    }
-}
-
-[HarmonyPatch(typeof(NTopBar), nameof(NTopBar.Initialize))]
-internal static class HideSettingsModifierPatch
-{
-    internal static IReadOnlyList<ModifierModel> Visible(IReadOnlyList<ModifierModel> modifiers) =>
-        modifiers.Where(m => m is not GravitySettingsModifier).ToArray();
-
-    private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
-    {
-        var getter = AccessTools.PropertyGetter(typeof(IRunState), nameof(IRunState.Modifiers));
-        foreach (var instruction in instructions)
-        {
-            yield return instruction;
-            if (instruction.Calls(getter)) yield return CodeInstruction.Call(typeof(HideSettingsModifierPatch), nameof(Visible));
-        }
-    }
-}
-
-// Standard runs still reject other gameplay modifiers as before. Exclude only
-// our internal data from the diagnostic count, without changing the input list.
-[HarmonyPatch(typeof(NCharacterSelectScreen), nameof(NCharacterSelectScreen.BeginRun))]
-internal static class StandardRunModifierDiagnosticPatch
-{
-    private static int GameplayCount(IReadOnlyCollection<ModifierModel> modifiers) =>
-        modifiers.Count(m => m is not GravitySettingsModifier);
-
-    private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
-    {
-        var getter = AccessTools.PropertyGetter(typeof(IReadOnlyCollection<ModifierModel>), "Count");
-        foreach (var instruction in instructions)
-        {
-            if (instruction.Calls(getter))
-            {
-                instruction.opcode = OpCodes.Call;
-                instruction.operand = AccessTools.Method(typeof(StandardRunModifierDiagnosticPatch), nameof(GameplayCount));
-            }
-            yield return instruction;
-        }
-    }
+    private static void Prefix(JsonTypeInfo info) => GravityRunSettings.ConfigureJson(info);
 }

@@ -50,8 +50,7 @@ internal static class NeowTests
     private static void VerifyChoices()
     {
         var baseline = Generate([]);
-        var settings = GravitySettingsModifier.Create(15, false);
-        var gravity = Generate([settings]);
+        var gravity = Generate([], withSettings: true);
         Check(baseline.Options.Count == 3 && gravity.Options.Count == 3,
             "Gravity must retain Neow's three normal choices");
         Check(baseline.Options.Select(o => o.Relic!.Id).SequenceEqual(gravity.Options.Select(o => o.Relic!.Id)),
@@ -59,7 +58,7 @@ internal static class NeowTests
         Check(baseline.Description == gravity.Description, "Gravity must preserve Neow's normal description");
         var other = (OtherSettingsModifier)ModelDb.Modifier<OtherSettingsModifier>().ToMutable();
         var custom = Generate([other]);
-        var mixed = Generate([other, settings]);
+        var mixed = Generate([other], withSettings: true);
         Check(custom.Options.Count == 0 && mixed.Options.Count == 0,
             "Other modifiers must retain the game's modifier-specific Neow behavior");
         Check(custom.Description == mixed.Description && custom.Description != baseline.Description,
@@ -67,10 +66,11 @@ internal static class NeowTests
         Console.WriteLine("Passed Neow normal choices, seeded rewards, descriptions and modifier coexistence checks.");
     }
 
-    private static (IReadOnlyList<EventOption> Options, string Description) Generate(IReadOnlyList<ModifierModel> modifiers)
+    private static (IReadOnlyList<EventOption> Options, string Description) Generate(IReadOnlyList<ModifierModel> modifiers, bool withSettings = false)
     {
         var player = (Player)RuntimeHelpers.GetUninitializedObject(typeof(Player));
         var run = SettingsTests.NewState(modifiers);
+        if (withSettings) GravityRunSettings.Set(run, 99, true);
         AccessTools.Field(typeof(Player), "_runState").SetValue(player, run);
         var neow = (Neow)ModelDb.Event<Neow>().ToMutable();
         AccessTools.Property(typeof(EventModel), nameof(EventModel.Owner)).SetValue(neow, player);

@@ -16,6 +16,19 @@ against the installed game assemblies. It does not open or change a run. Its
 multiplayer fixtures use stand-ins for sockets and scenes; offline checks do not
 replace in-game testing of UI, full runs, or live co-op.
 
+Gravity sends an immutable settings snapshot through the game's native reliable
+message transport immediately before its start/load/rejoin message. The client
+validates and consumes the snapshot before accepting that run. Delivery and
+ordering use the existing transport, without a separate acknowledgment or retry
+protocol. JSON save data is restored independently and does not extend native
+network packets. Old Gravity modifiers are read and removed during save loading.
+
+Mod messages share the game's message-ID registry. The integration harness checks
+native discovery and stable IDs with another mod and reversed load order; this is
+not a claim that arbitrary mod combinations or game versions are compatible.
+Before release, test a live host/client run with different defaults, a saved-run
+load, and a client restart/rejoin, using matching gameplay mods on all peers.
+
 After changing workflow or publisher tooling, run:
 
 ```sh
