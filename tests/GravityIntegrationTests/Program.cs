@@ -24,6 +24,7 @@ static void Run()
     SettingsTests.InitializeModels();
     GameRulesTests.Run();
     SettingsTests.Run();
+    NeowTests.Run();
     LobbyLifecycleTests.Run();
     OptionalSettingsTests.Run();
     harmony.UnpatchAll(harmony.Id);
