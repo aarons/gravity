@@ -151,3 +151,34 @@ stable, same-candidate beta checks, save/reconnect with real players, and testin
 with actual multiplayer mods. No branch switch, game install, or publication was
 performed as part of the implementation checkpoint. Update this section as those
 checks are completed.
+
+## Beta validation checkpoint (2026-09-22)
+
+Installed public beta: **v0.111.0**, commit `41cef1ea`, Steam build `24724944`
+(macOS ARM64). The previous stable Release DLL applied 32 patches but was not
+beta-compatible: beta removed `SavedPropertiesTypeCache`. Registration now uses
+reflection for that stable-only API; beta uses automatic native saved-property
+discovery after mod initialization. No shared registry is rewritten.
+
+Updated the fixture for beta's assembly list, native `AssemblyInfo.Init`, and
+moved lobby-player type. It invokes Gravity registration before native cache
+initialization, matching loader timing. A beta comparison initializes the native
+cache with and without Gravity's properties and checks identical property IDs,
+ordering, bit width, and serialization hash, with the other test modifier present.
+
+The updated Release candidate passes 32 patch installations, native discovery,
+16 lobby/save/reconnect payload combinations, eight native lobby lifecycle cases,
+legacy migration, fallback isolation, coexistence, native mod-version comparisons,
+and optional adapter dispatch checks. All 24,970 progression/physics/playback
+checks and English localization validation pass. No live network or scene testing
+was performed; save/reconnect payload fixtures contain no players.
+
+Tooling tests: 43 passed, two unnamed-template tests skipped. `./install.sh`
+installed the validated candidate locally; restart the game before testing.
+Candidate SHA-256: `1532ca4733835047c1387a75cda6a282da459f50e79022fc04ca37e9260f95e9`.
+
+The original stable DLL cannot be used for beta play-testing. Use the rebuilt
+candidate. Re-run that same candidate on stable assemblies before declaring both
+branches verified; no stable assembly copy was available in this session. Beta
+live co-op should cover differing host/client settings, immediate start, save/load,
+reconnect, clients' unchanged solo defaults, and actual companion multiplayer mods.

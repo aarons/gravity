@@ -1,6 +1,6 @@
 {
   "visibility": "public",
-  "changeNote": "1.0.4\n\nAdded support for acts with three or more bosses. Bosses unlock in sequence, wrap into additional rows as needed, and the map scrolls to the available boss.\n\n────────────────────\n\n现在支持包含三个或更多Boss的章节。Boss会依次解锁，数量较多时会自动分行排列，地图会滚动到当前可挑战的Boss。",
+  "changeNote": "1.0.5\n\nReworked co-op settings synchronization for stable and beta. The host’s encounter requirement and encounter locking use the game’s built-in save and network handling for better compatibility with other mods. Existing saves remain supported.\n\n────────────────────\n\n重做了稳定版和测试版的联机设置同步。房主的遭遇次数要求和遭遇锁定设置现在通过游戏内置的存档与网络机制传递，以改善与其他模组的兼容性。现有存档仍可继续使用。",
   "tags": [],
   "dependencies": [],
   "contentDescriptors": []

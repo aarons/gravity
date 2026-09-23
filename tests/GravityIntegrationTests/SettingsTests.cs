@@ -28,7 +28,9 @@ internal static class SettingsTests
         foreach (var assembly in new[] { typeof(GravitySettingsModifier).Assembly, typeof(SettingsTests).Assembly })
         {
             var mod = (Mod)RuntimeHelpers.GetUninitializedObject(typeof(Mod));
-            mod.assembly = assembly;
+            var assemblyField = AccessTools.Field(typeof(Mod), "assembly");
+            if (assemblyField != null) assemblyField.SetValue(mod, assembly);
+            else AccessTools.Field(typeof(Mod), "assemblies").SetValue(mod, new List<Assembly> { assembly });
             mod.state = ModLoadState.Loaded;
             var field = AccessTools.Field(typeof(Mod), "manifest");
             var manifest = Activator.CreateInstance(field.FieldType)!;
@@ -38,28 +40,70 @@ internal static class SettingsTests
         }
         AccessTools.Field(typeof(ModManager), "_mods").SetValue(null, mods);
         AccessTools.Property(typeof(ModManager), nameof(ModManager.State)).SetValue(null, ModManagerState.Initialized);
+        var assemblyInfo = typeof(Mod).Assembly.GetType("MegaCrit.Sts2.Core.Modding.AssemblyInfo");
+        if (assemblyInfo != null) AccessTools.Method(assemblyInfo, "Init").Invoke(null, null);
         // The final diagnostic uses Godot's OS API. Omit only logging in this headless fixture.
         var fixture = new Harmony("Gravity.SettingsFixture");
         fixture.Patch(AccessTools.Method(typeof(ModelIdSerializationCache), nameof(ModelIdSerializationCache.Init)),
             transpiler: new HarmonyMethod(typeof(SettingsTests), nameof(WithoutLogging)));
         fixture.Patch(AccessTools.Constructor(typeof(UnlockState), [typeof(IEnumerable<UnlockState>)]),
             prefix: new HarmonyMethod(typeof(SettingsTests), nameof(EmptyPlayersUnlocks)));
+        // Match mod initialization timing, before beta's native cache is ready.
+        var initialNames = LegacyPropertyCache != null ? PropertyNames() : null;
+        var initialBits = LegacyPropertyCache != null ? PropertyBits() : 0;
+        GravitySettingsModifier.RegisterSavedProperties();
+        if (initialNames != null)
+            Check(initialNames.SequenceEqual(PropertyNames()) && initialBits == PropertyBits(),
+                "Initial stable registration must preserve property IDs and bit width");
         ModelDb.Init();
+        if (LegacyPropertyCache == null) VerifyNativePropertyDiscovery();
         ModelIdSerializationCache.Init();
         ModelDb.InitIds();
         Check(ModelDb.Modifier<GravitySettingsModifier>() != null, "Game discovery must register Gravity's model");
         var names = PropertyNames();
-        var bits = SavedPropertiesTypeCache.NetIdBitSize;
+        var bits = PropertyBits();
         GravitySettingsModifier.RegisterSavedProperties();
-        Check(names.SequenceEqual(PropertyNames()) && bits == SavedPropertiesTypeCache.NetIdBitSize,
+        Check(names.SequenceEqual(PropertyNames()) && bits == PropertyBits(),
             "Gravity must not change any saved-property network ID or its bit width");
-        SavedPropertiesTypeCache.InjectTypeIntoCache(typeof(OtherSettingsModifier));
+        if (LegacyPropertyCache != null)
+            AccessTools.Method(LegacyPropertyCache, "InjectTypeIntoCache").Invoke(null, [typeof(OtherSettingsModifier)]);
         var otherNames = PropertyNames();
         GravitySettingsModifier.RegisterSavedProperties();
-        Check(otherNames.SequenceEqual(PropertyNames()) && bits == SavedPropertiesTypeCache.NetIdBitSize,
+        Check(otherNames.SequenceEqual(PropertyNames()) && bits == PropertyBits(),
             "Registration must preserve another mod's properties and be idempotent");
         Check(!ModelDb.GoodModifiers.Concat(ModelDb.BadModifiers).OfType<GravitySettingsModifier>().Any(), "Internal snapshot must not enter the selectable modifier pool");
     }
+
+    private static void VerifyNativePropertyDiscovery()
+    {
+        // Compare beta's native registry with and without Gravity's properties.
+        // Keep the same models and other mod loaded in both passes.
+        var fixture = new Harmony("Gravity.PropertyDiscoveryFixture");
+        var cacheProperties = AccessTools.Method(typeof(ModelIdSerializationCache), "CachePropertiesForType");
+        fixture.Patch(cacheProperties,
+            prefix: new HarmonyMethod(typeof(SettingsTests), nameof(SkipGravityProperties)));
+        string[] names;
+        int bits;
+        var hashProperty = AccessTools.Property(typeof(ModelIdSerializationCache), "Hash");
+        object? hash;
+        try
+        {
+            ModelIdSerializationCache.Init();
+            names = PropertyNames();
+            bits = PropertyBits();
+            hash = hashProperty.GetValue(null);
+        }
+        finally { fixture.UnpatchAll(fixture.Id); }
+        AccessTools.Method(typeof(ModelIdSerializationCache), "ResetForTest").Invoke(null, null);
+        ModelIdSerializationCache.Init();
+        Check(names.SequenceEqual(PropertyNames()) && bits == PropertyBits(),
+            "Native Gravity discovery must not add or reorder property IDs or change bit width");
+        Check(Equals(hash, hashProperty.GetValue(null)),
+            "Reused property tokens must not alter beta's native serialization hash");
+        AccessTools.Method(typeof(ModelIdSerializationCache), "ResetForTest").Invoke(null, null);
+    }
+
+    private static bool SkipGravityProperties(Type __0) => __0 != typeof(GravitySettingsModifier);
 
     private static void EmptyPlayersUnlocks(ref IEnumerable<UnlockState> __0)
     {
@@ -67,7 +111,12 @@ internal static class SettingsTests
         if (!__0.Any()) __0 = [UnlockState.all];
     }
 
-    private static string[] PropertyNames() => ((List<string>)AccessTools.Field(typeof(SavedPropertiesTypeCache),
+    private static Type? LegacyPropertyCache => typeof(ModifierModel).Assembly
+        .GetType("MegaCrit.Sts2.Core.Saves.Runs.SavedPropertiesTypeCache");
+    private static Type PropertyCache => LegacyPropertyCache ?? typeof(ModelIdSerializationCache);
+    private static int PropertyBits() => (int)AccessTools.Property(PropertyCache,
+        LegacyPropertyCache != null ? "NetIdBitSize" : "PropertyIdBitSize").GetValue(null)!;
+    private static string[] PropertyNames() => ((List<string>)AccessTools.Field(PropertyCache,
         "_netIdToPropertyNameMap").GetValue(null)!).ToArray();
 
     private static IEnumerable<CodeInstruction> WithoutLogging(IEnumerable<CodeInstruction> instructions)

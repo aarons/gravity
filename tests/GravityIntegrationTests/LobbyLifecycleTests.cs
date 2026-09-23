@@ -131,8 +131,8 @@ internal static class LobbyLifecycleTests
         var lobby = (StartRunLobby)RuntimeHelpers.GetUninitializedObject(typeof(StartRunLobby));
         AccessTools.Field(typeof(StartRunLobby), "<NetService>k__BackingField").SetValue(lobby, service);
         AccessTools.Field(typeof(StartRunLobby), "<LobbyListener>k__BackingField").SetValue(lobby, listener);
-        AccessTools.Field(typeof(StartRunLobby), "<Players>k__BackingField").SetValue(lobby,
-            new List<MegaCrit.Sts2.Core.Entities.Multiplayer.LobbyPlayer>());
+        var players = AccessTools.Field(typeof(StartRunLobby), "<Players>k__BackingField");
+        players.SetValue(lobby, Activator.CreateInstance(players.FieldType));
         AccessTools.Field(typeof(StartRunLobby), "<GameMode>k__BackingField").SetValue(lobby, GameMode.Standard);
         lobby.Act1 = "overgrowth";
         return lobby;

@@ -1,5 +1,6 @@
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Saves.Runs;
+using HarmonyLib;
 
 namespace Gravity;
 
@@ -26,10 +27,16 @@ public sealed class GravitySettingsModifier : ModifierModel
 
     internal static void RegisterSavedProperties()
     {
+        // Stable needs explicit registration. Beta discovers saved properties with
+        // model IDs after mod initialization, and no longer has this cache type.
+        // Avoid a static reference so the same DLL can load on either branch.
+        var cache = typeof(ModifierModel).Assembly.GetType("MegaCrit.Sts2.Core.Saves.Runs.SavedPropertiesTypeCache");
+        if (cache == null) return;
         // Both tokens must already exist. Do not expand or repair another mod's registry.
-        _ = SavedPropertiesTypeCache.GetNetIdForPropertyName(nameof(CombatsLeft));
-        _ = SavedPropertiesTypeCache.GetNetIdForPropertyName(nameof(IsUsed));
-        SavedPropertiesTypeCache.InjectTypeIntoCache(typeof(GravitySettingsModifier));
+        var getId = AccessTools.Method(cache, "GetNetIdForPropertyName");
+        _ = getId.Invoke(null, [nameof(CombatsLeft)]);
+        _ = getId.Invoke(null, [nameof(IsUsed)]);
+        AccessTools.Method(cache, "InjectTypeIntoCache").Invoke(null, [typeof(GravitySettingsModifier)]);
     }
 
     internal static GravitySettingsModifier Create(int requirement, bool locked)

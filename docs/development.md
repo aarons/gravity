@@ -1,0 +1,58 @@
+# Development checks
+
+See the [README](../README.md) for building and installing locally.
+
+## Offline checks
+
+```sh
+dotnet build -c Release
+dotnet run --project tests/GravityTests
+dotnet run --project tests/GravityIntegrationTests
+python3 scripts/validate_localization.py --english-only
+```
+
+The integration harness installs and removes Harmony patches in a separate process
+against the installed game assemblies. It does not open or change a run. Its
+multiplayer fixtures use stand-ins for sockets and scenes; offline checks do not
+replace in-game testing of UI, full runs, or live co-op.
+
+After changing workflow or publisher tooling, run:
+
+```sh
+python3 -m unittest discover -s tests -v
+```
+
+Tooling tests use temporary fixtures, fake translation sessions, and an in-memory
+Steam adapter. They do not install into the game, call real translation models,
+or upload to Steam.
+
+## Alternate game installations
+
+Use the `Sts2DataDir` MSBuild property to build against another installation's
+assemblies. To check the same Release DLL against a second installation without
+rebuilding it:
+
+```sh
+dotnet build -c Release tests/GravityIntegrationTests
+GRAVITY_TEST_GAME_DATA="/path/to/game/data" \
+  dotnet tests/GravityIntegrationTests/bin/Release/net9.0/GravityIntegrationTests.dll
+```
+
+If the game reports that Gravity failed to initialize, inspect the exception in
+`SlayTheSpire2/logs/godot.log`. The generic assembly error does not identify the cause.
+
+## Optional mod integrations
+
+Gravity's BaseLib and RitsuLib settings adapters register at main-menu initialization
+without compile-time dependencies on either library. If an optional API is incompatible,
+the adapter logs a warning and the native Mods panel remains available. Gravity's
+preferences live in `user://gravity.cfg`; BaseLib may also create an empty adapter
+config file.
+
+Set `GRAVITY_BASELIB_DLL` and/or `GRAVITY_RITSULIB_DLL` when running the integration
+harness to check their local API contracts. For RitsuLib's multi-version distribution,
+use the DLL under `compat/<game-version>/` and keep its companion `shared/` directory.
+
+Set `GRAVITY_BETTEREXPERIENCE_DLL` to check BetterExperience's linked-boss map discovery
+and travel. Use a matching process architecture; BetterExperience 1.5.5's DLL targets
+x64. These checks do not verify visual behavior or full-run compatibility.
