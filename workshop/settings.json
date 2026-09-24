@@ -1,6 +1,6 @@
 {
   "visibility": "public",
-  "changeNote": "1.0.6\n\nFixed Neow’s starting choices being skipped in single-player and co-op runs.\n\n────────────────────\n\n修复了单人和联机模式中涅奥的初始选项被跳过的问题。",
+  "changeNote": "1.0.7\n\nImproved co-op settings sync when starting, loading, or rejoining a run. Settings are preserved for later sessions. If synchronization fails, a warning appears and play continues with locally remembered or current settings.\n\n────────────────────\n\n改进了开局、读档和重连时的联机设置同步，并保留设置以便下次继续游戏。若同步失败，将显示提示，并使用本地记住的设置或当前设置继续游戏。",
   "tags": [],
   "dependencies": [],
   "contentDescriptors": []

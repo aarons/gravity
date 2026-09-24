@@ -18,9 +18,15 @@ replace in-game testing of UI, full runs, or live co-op.
 
 Gravity sends an immutable settings snapshot through the game's native reliable
 message transport immediately before its start/load/rejoin message. The client
-validates and consumes the snapshot before accepting that run. Delivery and
+consumes the snapshot before accepting that run. Delivery and
 ordering use the existing transport, without a separate acknowledgment or retry
-protocol. JSON save data is restored independently and does not extend native
+protocol. Missing or invalid host settings show a dismissible warning and use a
+fixed local snapshot while the native start/join proceeds. New runs use current
+preferences. Clients remember their most recent co-op snapshot in
+`user://gravity_run_settings.json`, matched by host and seed for load/rejoin
+fallbacks; starting a new run always captures fresh settings. Failure tests
+deliberately withhold or alter settings, rather than model normal packet loss.
+JSON save data is restored independently and does not extend native
 network packets. Old Gravity modifiers are read and removed during save loading.
 
 Mod messages share the game's message-ID registry. The integration harness checks

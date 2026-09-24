@@ -44,6 +44,8 @@ internal static class SettingsTests
         if (assemblyInfo != null) AccessTools.Method(assemblyInfo, "Init").Invoke(null, null);
         // The final diagnostic uses Godot's OS API. Omit only logging in this headless fixture.
         var fixture = new Harmony("Gravity.SettingsFixture");
+        fixture.Patch(AccessTools.Method(typeof(GravitySettingsSync), "ShowWarning"),
+            prefix: new HarmonyMethod(typeof(SettingsTests), nameof(SuppressWarning)));
         fixture.Patch(AccessTools.Method(typeof(ModelIdSerializationCache), nameof(ModelIdSerializationCache.Init)),
             transpiler: new HarmonyMethod(typeof(SettingsTests), nameof(WithoutLogging)));
         fixture.Patch(AccessTools.Constructor(typeof(UnlockState), [typeof(IEnumerable<UnlockState>)]),
@@ -74,6 +76,8 @@ internal static class SettingsTests
         // No Godot-backed player inventories in the headless fixture.
         if (!__0.Any()) __0 = [UnlockState.all];
     }
+
+    private static bool SuppressWarning() => false; // No Godot scene in the harness.
 
     private static IEnumerable<CodeInstruction> WithoutLogging(IEnumerable<CodeInstruction> instructions)
     {
@@ -119,12 +123,14 @@ internal static class SettingsTests
             reader.Reset(writer.Buffer);
             var network = new SerializableRun();
             network.Deserialize(reader);
-            Throws<InvalidDataException>(() => RunState.FromSerializable(network), "Network saves must require the dedicated message");
+            var fallback = GravitySettingsSnapshot.FromPreferences();
+            Check(GravityRunSettings.GetSnapshot(RunState.FromSerializable(network)) == fallback,
+                "An unpaired network save must still load with a local snapshot");
         }
         VerifyMigration();
         GravitySettings.RestoreEncounterPreferences(15, true);
         GravitySettings.LockEncountersAfterBossUnlock = false;
-        Console.WriteLine("Passed immutable settings, JSON persistence, network missing-data guard, and legacy save migration checks.");
+        Console.WriteLine("Passed immutable settings, JSON persistence, network fallback, and legacy save migration checks.");
     }
 
     private static void VerifyMigration()

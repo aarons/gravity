@@ -16,7 +16,7 @@
   "settings.pulse_preview": "Available encounter",
   "settings.done": "Done",
   "settings.save_error": "Could not save settings. Please try again.",
-  "settings.sync_error": "Could not receive Gravity’s run settings. Check that everyone has the same Gravity version, then reconnect.",
+  "settings.sync_warning": "Could not synchronize Gravity settings with the host. You can keep playing, but your settings may differ. Try reconnecting.",
   "settings.off": "Off",
   "settings.percent": "{0}%",
   "settings.appearance_title": "Gravity appearance",

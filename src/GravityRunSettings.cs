@@ -52,7 +52,7 @@ internal static class GravityRunSettings
         Fields.GetOrCreateValue(fields).Snapshot = snapshot;
     }
 
-    // Only singleplayer may initialize from personal preferences.
+    // Singleplayer starts from personal preferences; co-op normally uses the host.
     public static void Initialize(RunState run)
     {
         var data = Fields.GetOrCreateValue(run.ExtraFields);
@@ -68,7 +68,7 @@ internal static class GravityRunSettings
     internal static void InitializeMultiplayer(RunState run, StartRunLobby lobby)
     {
         if (!Starting.TryGetValue(lobby, out var snapshot))
-            throw GravitySettingsSync.Missing(lobby.NetService);
+            snapshot = GravitySettingsSync.Fallback();
         Store(run.ExtraFields, snapshot);
         Starting.Remove(lobby);
     }
@@ -85,9 +85,6 @@ internal static class GravityRunSettings
         var legacy = save.Modifiers.Where(m => m.Id == LegacyId).ToArray();
         if (data.Snapshot == null)
         {
-            // A network run must be paired with its separate settings message.
-            // Disk saves predating Gravity settings use the original fixed rules.
-            if (data.FromNetwork) throw new InvalidDataException("Missing Gravity settings for a network run.");
             if (data.Version is int version)
             {
                 if (version != GravitySettingsSnapshot.Version || data.LegacyRequirement is not int count
@@ -105,9 +102,11 @@ internal static class GravityRunSettings
             }
             else
             {
+                // Normal joins attach the selected snapshot before loading. If
+                // that hook was missed, still let the run load with a warning.
                 Store(save.ExtraFields, data.LegacyRequirement is int requirement
                     ? new(requirement is >= -1 and <= 1000 ? requirement : 15, data.LegacyLock ?? false)
-                    : GravitySettingsSnapshot.Default);
+                    : data.FromNetwork ? GravitySettingsSync.Fallback() : GravitySettingsSnapshot.Default);
             }
         }
         // Remove only our retired data model, before the game resolves model IDs.

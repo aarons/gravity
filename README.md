@@ -31,7 +31,9 @@ also provide access through their mod-settings panels.
 Run settings are fixed when a new run starts and persist through saves and later
 acts. Co-op uses the host's settings without changing clients' personal defaults.
 The host sends the run's settings at startup and when a player joins a saved or
-ongoing run. Missing or incompatible settings stop the connection.
+ongoing run. If synchronization fails, a warning appears and play continues with
+your current settings. When resuming, Gravity first tries its locally remembered
+settings for that host and run.
 Settings are saved separately from gameplay modifiers; older Gravity saves migrate
 automatically, preserving Neow's normal starting choices.
 

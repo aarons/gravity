@@ -8,21 +8,16 @@ using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
 using MegaCrit.Sts2.Core.Multiplayer.Messages.Lobby;
 using MegaCrit.Sts2.Core.Multiplayer.Serialization;
 using MegaCrit.Sts2.Core.Multiplayer.Transport;
+using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves;
 
 namespace Gravity;
 
-internal enum GravitySettingsTransfer { NewRun, Load, Rejoin }
-
 // Discovered by the game's MessageTypes.Initialize, like other mod messages.
 // Use the same reliable channel and buffering as the native start/join response.
 public struct GravityRunSettingsMessage : INetMessage
 {
-    internal int Version;
-    internal ulong Sequence;
-    internal GravitySettingsTransfer Transfer;
-    internal string Seed;
     internal int Requirement;
     internal bool LockEncounters;
 
@@ -33,20 +28,12 @@ public struct GravityRunSettingsMessage : INetMessage
 
     public void Serialize(PacketWriter writer)
     {
-        writer.WriteInt(Version);
-        writer.WriteULong(Sequence);
-        writer.WriteInt((int)Transfer);
-        writer.WriteString(Seed);
         writer.WriteInt(Requirement);
         writer.WriteBool(LockEncounters);
     }
 
     public void Deserialize(PacketReader reader)
     {
-        Version = reader.ReadInt();
-        Sequence = reader.ReadULong();
-        Transfer = (GravitySettingsTransfer)reader.ReadInt();
-        Seed = reader.ReadString();
         Requirement = reader.ReadInt();
         LockEncounters = reader.ReadBool();
     }
@@ -56,8 +43,7 @@ internal sealed class GravitySettingsSync
 {
     private static readonly ConditionalWeakTable<INetGameService, GravitySettingsSync> Sessions = new();
     private readonly INetGameService service;
-    private ulong sequence;
-    private GravityRunSettingsMessage? pending;
+    private GravitySettingsSnapshot? pending;
 
     private GravitySettingsSync(INetGameService service)
     {
@@ -81,44 +67,63 @@ internal sealed class GravitySettingsSync
     private void Receive(GravityRunSettingsMessage message, ulong senderId)
     {
         if (service is not INetClientGameService client || client.NetClient?.HostNetId != senderId) return;
-        if (message.Version != GravitySettingsSnapshot.Version || message.Sequence <= sequence
-            || !Enum.IsDefined(message.Transfer) || string.IsNullOrEmpty(message.Seed)
-            || !new GravitySettingsSnapshot(message.Requirement, message.LockEncounters).IsValid
-            || pending != null)
-            throw Missing(service);
-        sequence = message.Sequence;
-        pending = message;
+        pending = new(message.Requirement, message.LockEncounters);
     }
 
-    internal void Send(GravitySettingsSnapshot snapshot, GravitySettingsTransfer transfer, string seed, ulong? peer = null)
+    internal void Send(GravitySettingsSnapshot snapshot, ulong? peer = null)
     {
         if (service.Type != NetGameType.Host) throw new InvalidOperationException("Only the host can send Gravity settings.");
         var message = new GravityRunSettingsMessage
         {
-            Version = GravitySettingsSnapshot.Version, Sequence = ++sequence, Transfer = transfer,
-            Seed = seed, Requirement = snapshot.Requirement, LockEncounters = snapshot.LockEncounters,
+            Requirement = snapshot.Requirement, LockEncounters = snapshot.LockEncounters,
         };
         if (peer is ulong id) service.SendMessage(message, id);
         else service.SendMessage(message);
     }
 
-    internal GravitySettingsSnapshot Take(GravitySettingsTransfer transfer, string? seed)
+    // The next native start/join response consumes the preceding host snapshot.
+    internal GravitySettingsSnapshot Take(string seed, bool resuming = false)
     {
-        var message = pending;
+        var snapshot = pending;
         pending = null;
-        if (message == null || message.Value.Transfer != transfer || message.Value.Seed != seed)
-            throw Missing(service);
-        return new(message.Value.Requirement, message.Value.LockEncounters);
+        var host = ((INetClientGameService)service).NetClient?.HostNetId;
+        if (snapshot == null || !snapshot.IsValid)
+            snapshot = Fallback(resuming && host is ulong id ? GravityRunSettingsCache.Read(id, seed) : null);
+        if (host is ulong hostId) GravityRunSettingsCache.Store(hostId, seed, snapshot);
+        return snapshot;
     }
 
-    internal static void Restore(INetGameService service, SerializableRun save, GravitySettingsTransfer transfer) =>
-        GravityRunSettings.Store(save.ExtraFields, For(service).Take(transfer, save.SerializableRng.Seed));
+    internal static void Restore(INetGameService service, SerializableRun save) =>
+        GravityRunSettings.Store(save.ExtraFields, For(service).Take(save.SerializableRng.Seed!, resuming: true));
 
-    internal static InvalidDataException Missing(INetGameService service)
+    internal static GravitySettingsSnapshot Fallback(GravitySettingsSnapshot? saved = null)
     {
-        Console.WriteLine("[Gravity] Missing, stale, or incompatible host settings. Ending the connection.");
-        service.Disconnect(NetError.InternalError);
-        return new InvalidDataException(MainFile.Localize("settings.sync_error"));
+        var snapshot = saved ?? GravitySettingsSnapshot.FromPreferences();
+        Console.WriteLine($"[Gravity] Could not synchronize run settings. Continuing with {snapshot}.");
+        ShowWarning();
+        return snapshot;
+    }
+
+    private static void ShowWarning()
+    {
+        try
+        {
+            var container = NModalContainer.Instance;
+            if (container == null) return;
+            if (container.OpenModal is Godot.Node open)
+            {
+                open.TreeExited += () => Godot.Callable.From(ShowWarning).CallDeferred();
+                return;
+            }
+            var popup = NErrorPopup.Create(MainFile.Localize("settings.title"),
+                MainFile.Localize("settings.sync_warning"), showReportBugButton: false);
+            if (popup != null) container.Add(popup);
+        }
+        catch (Exception error)
+        {
+            // A warning must never prevent the native start/join handler finishing.
+            Console.WriteLine($"[Gravity] Could not show settings warning: {error.Message}");
+        }
     }
 }
 
@@ -138,13 +143,13 @@ internal static class RegisterGravitySettingsReceiverPatch
 [HarmonyPatch(typeof(StartRunLobby), "BeginRunForAllPlayers")]
 internal static class HostRunSettingsPatch
 {
-    private static void Prefix(StartRunLobby __instance, string seed, bool ____isBeginningRun)
+    private static void Prefix(StartRunLobby __instance, bool ____isBeginningRun)
     {
         if (__instance.NetService.Type == NetGameType.Client || ____isBeginningRun) return;
         var snapshot = GravitySettingsSnapshot.FromPreferences();
         GravityRunSettings.Capture(__instance, snapshot);
         if (__instance.NetService.Type == NetGameType.Host)
-            GravitySettingsSync.For(__instance.NetService).Send(snapshot, GravitySettingsTransfer.NewRun, seed);
+            GravitySettingsSync.For(__instance.NetService).Send(snapshot);
     }
 }
 
@@ -155,7 +160,7 @@ internal static class ClientRunSettingsPatch
     {
         if (__instance.NetService.Type == NetGameType.Client)
             GravityRunSettings.Capture(__instance,
-                GravitySettingsSync.For(__instance.NetService).Take(GravitySettingsTransfer.NewRun, seed));
+                GravitySettingsSync.For(__instance.NetService).Take(seed));
     }
 }
 
@@ -165,8 +170,7 @@ internal static class SendLoadedSettingsPatch
     private static void Prefix(LoadRunLobby __instance, ulong senderId)
     {
         if (__instance.NetService.Type != NetGameType.Host || !__instance.Run.Players.Any(p => p.NetId == senderId)) return;
-        GravitySettingsSync.For(__instance.NetService).Send(GravityRunSettings.ReadSave(__instance.Run),
-            GravitySettingsTransfer.Load, __instance.Run.SerializableRng.Seed!, senderId);
+        GravitySettingsSync.For(__instance.NetService).Send(GravityRunSettings.ReadSave(__instance.Run), senderId);
     }
 }
 
@@ -177,8 +181,7 @@ internal static class SendRejoinSettingsPatch
     {
         if (____netService.Type != NetGameType.Host || ____playerCollection is not RunState run
             || run.GetPlayer(senderId) == null) return;
-        GravitySettingsSync.For(____netService).Send(GravityRunSettings.GetSnapshot(run),
-            GravitySettingsTransfer.Rejoin, run.Rng.StringSeed, senderId);
+        GravitySettingsSync.For(____netService).Send(GravityRunSettings.GetSnapshot(run), senderId);
     }
 }
 
@@ -186,12 +189,12 @@ internal static class SendRejoinSettingsPatch
 internal static class ReceiveLoadedSettingsPatch
 {
     private static void Prefix(JoinFlow __instance, ClientLoadJoinResponseMessage message) =>
-        GravitySettingsSync.Restore(__instance.NetService, message.serializableRun, GravitySettingsTransfer.Load);
+        GravitySettingsSync.Restore(__instance.NetService, message.serializableRun);
 }
 
 [HarmonyPatch(typeof(JoinFlow), "HandleRejoinResponseMessage")]
 internal static class ReceiveRejoinSettingsPatch
 {
     private static void Prefix(JoinFlow __instance, ClientRejoinResponseMessage message) =>
-        GravitySettingsSync.Restore(__instance.NetService, message.serializableRun, GravitySettingsTransfer.Rejoin);
+        GravitySettingsSync.Restore(__instance.NetService, message.serializableRun);
 }

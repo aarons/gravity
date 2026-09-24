@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 using Gravity;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Entities.Multiplayer;
@@ -19,15 +20,23 @@ using MegaCrit.Sts2.Core.Saves.Runs;
 // writes and scenes are fixtures. This does not establish live co-op compatibility.
 internal static class LobbyLifecycleTests
 {
+    private static string cachePath = "";
+    private static int warnings;
+
     public static void Run()
     {
+        cachePath = Path.Combine(Path.GetTempPath(), $"gravity-run-settings-{Guid.NewGuid()}.json");
         var fixture = new Harmony("Gravity.LobbyLifecycleFixture");
+        fixture.Patch(AccessTools.PropertyGetter(typeof(GravityRunSettingsCache), "CachePath"),
+            prefix: new HarmonyMethod(typeof(LobbyLifecycleTests), nameof(CacheLocation)));
+        fixture.Patch(AccessTools.Method(typeof(GravitySettingsSync), "ShowWarning"),
+            prefix: new HarmonyMethod(typeof(LobbyLifecycleTests), nameof(RecordWarning)));
         fixture.Patch(AccessTools.Method(typeof(StartRunLobby), "UpdatePreferredAscension"),
             prefix: new HarmonyMethod(typeof(LobbyLifecycleTests), nameof(Skip)));
         foreach (var name in new[] { "BeginRunForAllPlayers", "HandleLobbyBeginRunMessage" })
             fixture.Patch(AccessTools.Method(typeof(StartRunLobby), name),
                 transpiler: new HarmonyMethod(typeof(LobbyLifecycleTests), nameof(WithoutLogging)));
-        foreach (var name in new[] { "HandleLoadJoinResponseMessage", "HandleRejoinResponseMessage" })
+        foreach (var name in new[] { "HandleLoadJoinResponseMessage", "HandleRejoinResponseMessage", "OnDisconnected" })
             fixture.Patch(AccessTools.Method(typeof(JoinFlow), name),
                 transpiler: new HarmonyMethod(typeof(LobbyLifecycleTests), nameof(WithoutLogging)));
         fixture.Patch(AccessTools.Method(typeof(RunManager), nameof(RunManager.SetUpNewMultiplayer)),
@@ -44,15 +53,18 @@ internal static class LobbyLifecycleTests
         {
             NewRuns();
             SavedRuns();
-            InvalidMessages();
+            SynchronizationFailures();
+            ResumingFallback();
+            ReceiverLifecycle();
         }
         finally
         {
             fixture.UnpatchAll(fixture.Id);
             GravitySettings.RestoreEncounterPreferences(15, true);
             GravitySettings.LockEncountersAfterBossUnlock = false;
+            File.Delete(cachePath);
         }
-        Console.WriteLine("Passed native start/load/rejoin settings transfer, differing defaults, missing/stale messages, disconnect cleanup, and another mod's message checks.");
+        Console.WriteLine("Passed native start/load/rejoin transfer, warning-only fallback, remembered settings across sessions, preference isolation, disconnect cleanup, and another mod's messages.");
     }
 
     private static void NewRuns()
@@ -106,8 +118,6 @@ internal static class LobbyLifecycleTests
             }
             Check(GravitySettings.NextRunRequirement == 4 && GravitySettings.LockEncountersAfterBossUnlock == !locked,
                 "Host snapshot changed the client's personal defaults");
-            SettingsTests.Throws<InvalidDataException>(() => GravitySettingsSync.For(client.Service)
-                .Take(GravitySettingsTransfer.NewRun, "GRAVITYTEST"), "A consumed snapshot must not be reusable");
         }
     }
 
@@ -131,6 +141,8 @@ internal static class LobbyLifecycleTests
         var join = (JoinFlow)RuntimeHelpers.GetUninitializedObject(typeof(JoinFlow));
         AccessTools.Field(typeof(JoinFlow), "<NetService>k__BackingField").SetValue(join, service);
         AccessTools.Method(typeof(RegisterGravitySettingsReceiverPatch), "Postfix").Invoke(null, [service]);
+        // Begin normally subscribes this native handler before requesting a run.
+        service.Disconnected += info => Invoke(join, "OnDisconnected", info);
         return join;
     }
 
@@ -144,7 +156,7 @@ internal static class LobbyLifecycleTests
 
     private static void SavedRuns()
     {
-        foreach (var transfer in new[] { GravitySettingsTransfer.Load, GravitySettingsTransfer.Rejoin })
+        foreach (var rejoin in new[] { false, true })
         {
             var host = new Endpoint(true);
             var client = new Endpoint(false); // A fresh client has no earlier snapshot.
@@ -160,7 +172,7 @@ internal static class LobbyLifecycleTests
             save.Players = [new SerializablePlayer { NetId = 2UL }];
             GravitySettings.RestoreEncounterPreferences(2, true);
             GravitySettings.LockEncountersAfterBossUnlock = false;
-            if (transfer == GravitySettingsTransfer.Load)
+            if (!rejoin)
             {
                 var lobby = (LoadRunLobby)RuntimeHelpers.GetUninitializedObject(typeof(LoadRunLobby));
                 AccessTools.Field(typeof(LoadRunLobby), "<NetService>k__BackingField").SetValue(lobby, host.Service);
@@ -178,7 +190,7 @@ internal static class LobbyLifecycleTests
             client.Deliver(host.Sent.Single());
             save.Players = [];
             var wireSave = RoundTripSave(save);
-            if (transfer == GravitySettingsTransfer.Load)
+            if (!rejoin)
             {
                 var completion = new TaskCompletionSource<ClientLoadJoinResponseMessage>();
                 AccessTools.Field(typeof(JoinFlow), "_loadJoinCompletion").SetValue(join, completion);
@@ -211,53 +223,146 @@ internal static class LobbyLifecycleTests
         return result;
     }
 
-    private static void InvalidMessages()
+    private static void SynchronizationFailures()
     {
-        var valid = new GravityRunSettingsMessage
+        // Fault injection, not normal packet loss: all native flows continue,
+        // warn once, and capture the fallback without changing preferences.
+        foreach (var requirement in new int?[] { null, -22, 1001 })
+        foreach (var flow in new[] { "start", "load", "rejoin" })
         {
-            Version = 1, Sequence = 1, Transfer = GravitySettingsTransfer.NewRun, Seed = "GRAVITYTEST", Requirement = 99,
-        };
-        foreach (var change in new ActionRef<GravityRunSettingsMessage>[]
-        {
-            (ref GravityRunSettingsMessage m) => m.Version = 2,
-            (ref GravityRunSettingsMessage m) => m.Requirement = -22,
-            (ref GravityRunSettingsMessage m) => m.Sequence = 0,
-            (ref GravityRunSettingsMessage m) => m.Transfer = (GravitySettingsTransfer)99,
-        })
-        {
+            File.Delete(cachePath);
+            warnings = 0;
+            GravitySettings.RestoreEncounterPreferences(31, true);
+            GravitySettings.LockEncountersAfterBossUnlock = true;
             var client = new Endpoint(false);
-            _ = Join(client.Service);
-            var invalid = valid;
-            change(ref invalid);
-            SettingsTests.Throws<InvalidDataException>(() => client.Deliver(invalid), "Invalid settings must be rejected");
-            Check(client.Disconnected, "Invalid settings must end the connection");
-        }
-        foreach (var scenario in new[] { "missing", "wrong seed", "wrong transfer", "stale", "non-host" })
-        {
-            var client = new Endpoint(false);
-            var sync = GravitySettingsSync.For(client.Service);
-            if (scenario != "missing") client.Deliver(valid, scenario == "non-host" ? 3UL : 1UL);
-            if (scenario == "stale")
+            RunState? run = null;
+            if (flow == "start")
             {
-                sync.Take(GravitySettingsTransfer.NewRun, "GRAVITYTEST");
-                SettingsTests.Throws<InvalidDataException>(() => client.Deliver(valid), "Stale packets must be rejected");
+                StartRunLobby? lobby = null;
+                lobby = Lobby(client.Service, Proxy<IStartRunLobbyListener>((method, args) =>
+                {
+                    if (method.Name == "BeginRun") run = Start(lobby!, (IReadOnlyList<ModifierModel>)args![2]!);
+                    return null;
+                }));
+                if (requirement is int count) client.Deliver(new GravityRunSettingsMessage { Requirement = count });
+                Invoke(lobby, "BeginRunLocally", "GRAVITYTEST", new List<ModifierModel>());
             }
             else
-                SettingsTests.Throws<InvalidDataException>(() => sync.Take(
-                    scenario == "wrong transfer" ? GravitySettingsTransfer.Rejoin : GravitySettingsTransfer.NewRun,
-                    scenario == "wrong seed" ? "DIFFERENT" : "GRAVITYTEST"), "Unmatched settings must block startup");
-            Check(client.Disconnected, "Missing settings must end the connection");
+            {
+                var join = Join(client.Service);
+                var save = RoundTripSave(SettingsTests.Save(SettingsTests.NewState()));
+                if (requirement is int count) client.Deliver(new GravityRunSettingsMessage { Requirement = count });
+                run = CompleteJoin(join, save, flow == "rejoin");
+            }
+            Check(run != null && GravityRunSettings.GetSnapshot(run) == new GravitySettingsSnapshot(31, true),
+                "Missing or invalid host data must continue with current settings");
+            Check(warnings == 1, "A failed transfer must show one warning");
+            Check(!client.Disconnected && client.Sent.Count == 0, "Fallback must neither disconnect nor request a re-sync");
+            Check(GravitySettings.NextRunRequirement == 31 && GravitySettings.LockEncountersAfterBossUnlock,
+                "Fallback must not change personal defaults");
+            GravitySettings.RestoreEncounterPreferences(2, true);
+            GravitySettings.LockEncountersAfterBossUnlock = false;
+            client.Deliver(new GravityRunSettingsMessage { Requirement = 99 });
+            Check(GravityRunSettings.GetSnapshot(run!) == new GravitySettingsSnapshot(31, true),
+                "Preference changes or late messages must not change an active run");
+            var json = JsonSerializer.Serialize(SettingsTests.Save(run!), JsonSerializationUtility.Options);
+            var restored = RunState.FromSerializable(JsonSerializer.Deserialize<SerializableRun>(json, JsonSerializationUtility.Options)!);
+            Check(GravityRunSettings.GetSnapshot(restored) == new GravitySettingsSnapshot(31, true),
+                "The chosen fallback must survive disk save/load");
         }
+
+        warnings = 0;
+        var missingCapture = new Endpoint(false);
+        var emptyLobby = Lobby(missingCapture.Service, Proxy<IStartRunLobbyListener>((_, _) => null));
+        Check(GravityRunSettings.GetSnapshot(Start(emptyLobby, [])) == GravitySettingsSnapshot.FromPreferences()
+            && warnings == 1 && !missingCapture.Disconnected, "A missing startup capture must also allow play");
+    }
+
+    private static RunState CompleteJoin(JoinFlow join, SerializableRun save, bool rejoin)
+    {
+        Task completion;
+        if (!rejoin)
+        {
+            var source = new TaskCompletionSource<ClientLoadJoinResponseMessage>();
+            AccessTools.Field(typeof(JoinFlow), "_loadJoinCompletion").SetValue(join, source);
+            Invoke(join, "HandleLoadJoinResponseMessage", new ClientLoadJoinResponseMessage { serializableRun = save }, 1UL);
+            completion = source.Task;
+        }
+        else
+        {
+            var source = new TaskCompletionSource<ClientRejoinResponseMessage>();
+            AccessTools.Field(typeof(JoinFlow), "_rejoinCompletion").SetValue(join, source);
+            Invoke(join, "HandleRejoinResponseMessage", new ClientRejoinResponseMessage { serializableRun = save }, 1UL);
+            completion = source.Task;
+        }
+        Check(completion.IsCompletedSuccessfully, "The native join must finish without waiting or failing");
+        return RunState.FromSerializable(save);
+    }
+
+    private static void ResumingFallback()
+    {
+        foreach (var rejoin in new[] { false, true })
+        {
+            var original = new Endpoint(false);
+            var sync = GravitySettingsSync.For(original.Service);
+            original.Deliver(new GravityRunSettingsMessage { Requirement = 27, LockEncounters = true });
+            sync.Take("GRAVITYTEST");
+            original.RaiseDisconnected();
+            GravitySettings.RestoreEncounterPreferences(4, true);
+            GravitySettings.LockEncountersAfterBossUnlock = false;
+            warnings = 0;
+
+            // New service, no pending snapshot, and changed preferences. Only
+            // the on-disk cache connects this join to the previous session.
+            var client = new Endpoint(false);
+            var join = Join(client.Service);
+            var save = RoundTripSave(SettingsTests.Save(SettingsTests.NewState()));
+            var run = CompleteJoin(join, save, rejoin);
+            Check(GravityRunSettings.GetSnapshot(run) == new GravitySettingsSnapshot(27, true)
+                && warnings == 1 && !client.Disconnected, "Resume must prefer the remembered snapshot to new defaults");
+
+            client.Deliver(new GravityRunSettingsMessage { Requirement = 99 });
+            var next = RoundTripSave(SettingsTests.Save(SettingsTests.NewState()));
+            run = CompleteJoin(join, next, rejoin);
+            Check(GravityRunSettings.GetSnapshot(run) == new GravitySettingsSnapshot(99, false)
+                && warnings == 1, "A fresh host snapshot must override the remembered fallback without a warning");
+            Check(GravityRunSettingsCache.Read(1, "GRAVITYTEST") == new GravitySettingsSnapshot(99, false),
+                "Host settings must update the remembered run");
+        }
+
+        Check(GravityRunSettingsCache.Read(3, "GRAVITYTEST") == null
+            && GravityRunSettingsCache.Read(1, "DIFFERENT") == null, "Do not reuse a different host or run's settings");
+        var fresh = new Endpoint(false);
+        Check(GravitySettingsSync.For(fresh.Service).Take("GRAVITYTEST") == GravitySettingsSnapshot.FromPreferences(),
+            "A new run with the same seed must capture fresh defaults, not reuse the previous run");
+        File.WriteAllText(cachePath, "{broken");
+        Check(GravitySettingsSync.For(fresh.Service).Take("GRAVITYTEST", resuming: true) == GravitySettingsSnapshot.FromPreferences()
+            && !fresh.Disconnected, "An unreadable cache must not prevent joining");
+    }
+
+    private static void ReceiverLifecycle()
+    {
+        var valid = new GravityRunSettingsMessage { Requirement = 99, LockEncounters = true };
+        var client = new Endpoint(false);
+        _ = Join(client.Service);
+        var sync = GravitySettingsSync.For(client.Service);
+        client.Deliver(valid);
+        client.Deliver(new GravityRunSettingsMessage { Requirement = 4 }, 3UL);
+        Check(sync.Take("GRAVITYTEST") == new GravitySettingsSnapshot(99, true), "Only the host can supply run settings");
+        Check(sync.Take("GRAVITYTEST") == GravitySettingsSnapshot.FromPreferences(), "A consumed snapshot must not be reused for a new run");
+        Check(!client.Disconnected, "Missing settings must allow play");
+
         var cleanup = new Endpoint(false);
         _ = Join(cleanup.Service);
         cleanup.Deliver(valid);
         cleanup.RaiseDisconnected();
         Check(!cleanup.Handlers.ContainsKey(typeof(GravityRunSettingsMessage)), "Disconnect must unregister the receiver");
-        SettingsTests.Throws<InvalidDataException>(() => GravitySettingsSync.For(cleanup.Service)
-            .Take(GravitySettingsTransfer.NewRun, "GRAVITYTEST"), "A new connection must not inherit a previous snapshot");
+        Check(GravitySettingsSync.For(cleanup.Service).Take("GRAVITYTEST") == GravitySettingsSnapshot.FromPreferences(),
+            "A new connection must not inherit a pending snapshot");
     }
 
-    private delegate void ActionRef<T>(ref T value);
+    private static bool CacheLocation(ref string __result) { __result = cachePath; return false; }
+    private static void RecordWarning() => warnings++;
     private static bool Skip() => false;
     private static bool English(string key, ref string __result) { __result = Localization.Get(key, "eng"); return false; }
     private static IEnumerable<CodeInstruction> WithoutLogging(IEnumerable<CodeInstruction> instructions)
@@ -319,7 +424,7 @@ internal static class LobbyLifecycleTests
                             if (list.Count == 0) Handlers.Remove(key);
                         }
                         break;
-                    case "Disconnect": Disconnected = true; break;
+                    case "Disconnect": RaiseDisconnected((NetError)args![0]!); break;
                     case "add_Disconnected": disconnected += (Action<NetErrorInfo>)args![0]!; break;
                     case "remove_Disconnected": disconnected -= (Action<NetErrorInfo>)args![0]!; break;
                 }
@@ -345,7 +450,11 @@ internal static class LobbyLifecycleTests
                 catch (TargetInvocationException e) when (e.InnerException != null) { throw e.InnerException; }
             }
         }
-        internal void RaiseDisconnected() => disconnected?.Invoke(default);
+        internal void RaiseDisconnected(NetError reason = NetError.Quit)
+        {
+            Disconnected = true;
+            disconnected?.Invoke(new NetErrorInfo(reason, true));
+        }
     }
 
     private sealed class FakeTransport() : NetClient(null!)
