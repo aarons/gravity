@@ -1,6 +1,6 @@
 {
   "visibility": "public",
-  "changeNote": "1.0.7\n\nImproved co-op settings sync when starting, loading, or rejoining a run. Settings are preserved for later sessions. If synchronization fails, a warning appears and play continues with locally remembered or current settings.\n\n────────────────────\n\n改进了开局、读档和重连时的联机设置同步，并保留设置以便下次继续游戏。若同步失败，将显示提示，并使用本地记住的设置或当前设置继续游戏。",
+  "changeNote": "1.1.0\n\nAdded early-map support and improved co-op settings and new-player defaults.\n\n- Gravity now works before Neow is unlocked. The opening fight counts toward boss progress.\n- Improved co-op settings sync when starting, loading, or rejoining a run. Settings are remembered across sessions; if sync fails, a warning appears and play continues with locally remembered or current settings.\n- Encounter locking is now on by default for new players: ordinary encounters lock when the boss unlocks. Existing preferences are preserved.\n\n────────────────────\n\n新增早期地图支持，改进联机设置同步和新玩家的默认设置。\n\n- 尚未解锁涅奥时，Gravity 也会生效。开场战斗计入解锁Boss所需的遭遇次数。\n- 改进开局、读档和重连时的联机设置同步，设置会保留至下次游戏。若同步失败，将显示提示，并使用本地记住的设置或当前设置继续游戏。\n- 新玩家默认开启遭遇锁定：Boss解锁后，普通遭遇将被锁定。已有设置保持不变。",
   "tags": [],
   "dependencies": [],
   "contentDescriptors": []

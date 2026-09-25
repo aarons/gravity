@@ -9,12 +9,13 @@ or asset pack is required.
 
 ## How it works
 
-Visit the starting Ancient, then choose any unvisited encounter. Bosses sit above
-the pile, with progress rings showing how close they are to unlocking. The stairs
-indicator in the top bar tracks encounters visited this act.
+Visit the starting Ancient, then choose any unvisited encounter. Before Neow is
+unlocked, complete the opening fight instead; it counts toward boss progress.
+Bosses sit above the pile, with progress rings showing how close they are to
+unlocking. The stairs indicator in the top bar tracks encounters visited this act.
 
-By default, you can keep exploring after the boss unlocks. Entering the boss ends
-ordinary exploration; acts with multiple bosses keep their boss sequence. Each
+By default, ordinary encounters lock after 15 visits, requiring you to move on to
+the boss. Acts with multiple bosses keep their boss sequence. Each
 act starts a fresh encounter count. The pile stays in place when you reopen the
 map or reload a save, and controller navigation follows the new layout.
 
@@ -25,8 +26,9 @@ also provide access through their mod-settings panels.
 
 - **Boss requirement:** Choose none, the default 15, all encounters, or a custom
   count from 0–999. A count above the available encounters requires visiting them all.
-- **Encounter locking:** Optionally stop ordinary exploration once the boss unlocks.
-  Off by default; has no effect when no encounters are required.
+- **Encounter locking:** Stop ordinary exploration once the boss unlocks.
+  On by default for new players; turn it off to keep exploring. Has no effect when
+  no encounters are required.
 
 Run settings are fixed when a new run starts and persist through saves and later
 acts. Co-op uses the host's settings without changing clients' personal defaults.
@@ -45,8 +47,7 @@ These settings include live previews, save automatically, and remain personal in
 ## Compatibility
 
 Start a fresh run with Gravity enabled and use the same Gravity version for all
-co-op players. Maps without a starting Ancient or with fewer than 15 encounters
-retain their normal behavior.
+co-op players. Maps with fewer than 15 encounters retain their normal behavior.
 
 Mods that replace map travel or draw route overlays may conflict. The original
 map graph remains available to game content, so effects based on its rows or paths

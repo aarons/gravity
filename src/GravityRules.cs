@@ -14,14 +14,16 @@ internal static class GravityRules
         DisplayedBosses.Add(map, points.Where(point => point.PointType == MapPointType.Boss).ToList());
     }
 
-    // Tutorial and single-room debug maps do not contain the required encounter pool.
+    // Leave small special-purpose maps, such as single-room debug maps, unchanged.
     public static bool Applies(IRunState? run) => run is RunState
-        && run.Map.StartingMapPoint.PointType == MapPointType.Ancient
         && Encounters(run.Map).Take(15).Count() == 15;
 
     public static IEnumerable<MapPoint> Encounters(ActMap map) => map.GetAllMapPoints()
-        .Where(point => point.coord != map.StartingMapPoint.coord
-            && point.PointType is not (MapPointType.Boss or MapPointType.Unassigned));
+        // The opening combat before Neow unlocks lives outside the map grid.
+        .Append(map.StartingMapPoint)
+        .Where(point => (point.coord != map.StartingMapPoint.coord || point.PointType != MapPointType.Ancient)
+            && point.PointType is not (MapPointType.Boss or MapPointType.Unassigned))
+        .DistinctBy(point => point.coord);
 
     public static IReadOnlyList<MapPoint> Bosses(ActMap map)
     {

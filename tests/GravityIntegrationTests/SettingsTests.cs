@@ -213,7 +213,7 @@ internal static class SettingsTests
 
     private static void VerifyPreferences()
     {
-        Check(!GravitySettings.LockEncountersAfterBossUnlock, "Encounter locking must default to off");
+        Check(GravitySettings.LockEncountersAfterBossUnlock, "Encounter locking must default to on for new players");
         Check(GravitySettings.Mode == GravitySettings.EncounterMode.Default
             && GravitySettings.CustomEncounterCount == 15 && GravitySettings.NextRunRequirement == 15,
             "Both the initial selection and custom value must default to 15");

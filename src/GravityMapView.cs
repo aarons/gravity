@@ -122,7 +122,7 @@ internal sealed class GravityMapView
         UpdateStatus();
         _progressDisplay.UpdatePositions();
         UpdateNavigation();
-        // Keep the game's first-map tutorial: its completion gates the Ancient's click handler.
+        // Keep the game's first-map tutorial: its completion gates the starting node's click handler.
         _screen.CallDeferred("InitMapPrompt");
     }
 

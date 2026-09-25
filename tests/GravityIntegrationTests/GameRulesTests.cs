@@ -6,6 +6,7 @@ using HarmonyLib;
 using MegaCrit.Sts2.Core.Map;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Runs.History;
+using MegaCrit.Sts2.Core.Saves.Runs;
 
 internal static class GameRulesTests
 {
@@ -41,7 +42,7 @@ internal static class GameRulesTests
             Check(GravityTopBarProgress.Text(run) == $"{i + 1}/15", "Counter must advance up to the goal");
         }
         var unlocked = MapTravel.GetTravelablePointsFrom(run, run.CurrentMapPoint!).ToArray();
-        Check(unlocked.Length == 46 && unlocked.Contains(map.BossMapPoint), "Boss unlock must preserve the remaining encounters");
+        Check(unlocked.SequenceEqual([map.BossMapPoint]), "New-player defaults must require the boss after 15 encounters");
         GravityRunSettings.Set(run, 16, true);
         Check(MapTravel.GetTravelablePointsFrom(run, run.CurrentMapPoint!).Count() == 45,
             "Lock must allow encounters before the requirement is met");
@@ -111,7 +112,60 @@ internal static class GameRulesTests
                 "BetterExperience's actual third boss must be reachable after its second boss");
             Console.WriteLine("Passed BetterExperience third-boss map discovery and travel checks.");
         }
-        Console.WriteLine("Passed real-game travel and room-history checks using the installed patches.");
+        VerifyOpeningCombat();
+        Console.WriteLine("Passed real-game travel, opening-combat progression and room-history checks using the installed patches.");
+    }
+
+    private static void VerifyOpeningCombat()
+    {
+        foreach (var reloadMap in new[] { false, true })
+        foreach (var requirement in new[] { 0, 1, 15, -1, 999 })
+        foreach (var lockEncounters in new[] { false, true })
+        {
+            var run = SettingsTests.NewState();
+            var map = new GoldenPathActMap(run);
+            // RunManager makes this same substitution before Neow is unlocked.
+            map.StartingMapPoint.PointType = MapPointType.Monster;
+            run.Map = reloadMap ? new SavedActMap(SerializableActMap.FromActMap(map)) : map;
+            GravityRunSettings.Set(run, requirement, lockEncounters);
+            Check(GravityRules.Applies(run), "The early map must support Gravity, including after reload");
+            Check(MapTravel.GetTravelablePointsFrom(run, run.Map.StartingMapPoint)
+                .SequenceEqual([run.Map.StartingMapPoint]), "The opening fight must remain mandatory");
+            Check(GravityRules.Progress(run).EncountersVisited == 0, "Unvisited opening combat must not count");
+            var encounters = GravityRules.Encounters(run.Map).ToArray();
+            Check(encounters.Length == 17 && encounters.Count(p => p.coord == map.StartingMapPoint.coord) == 1,
+                "The early map's pool must include the opening combat exactly once");
+            var target = requirement == -1 ? 17 : Math.Min(requirement, 17);
+            Check(GravityRules.Progress(run).RequiredEncounters == target,
+                "All and oversized requirements must include the opening combat");
+            var order = new[] { run.Map.StartingMapPoint }
+                .Concat(encounters.Where(p => p.coord != map.StartingMapPoint.coord).OrderByDescending(p => p.coord.row));
+            var count = 0;
+            foreach (var point in order)
+            {
+                Check(MapTravel.GetTravelablePointsFrom(run, run.Map.StartingMapPoint).Contains(point),
+                    "Unvisited encounters must be available after the opening combat");
+                run.AddVisitedMapCoord(point.coord);
+                count++;
+                var progress = GravityRules.Progress(run);
+                Check(progress.EncountersVisited == count, "Every combat, including the opening fight, must count");
+                Check(GravityTopBarProgress.Text(run) == (target == 0 ? $"{count}" : $"{Math.Min(count, target)}/{target}"),
+                    "The counter must include the opening fight");
+                var choices = MapTravel.GetTravelablePointsFrom(run, point).ToArray();
+                Check(choices.Contains(run.Map.BossMapPoint) == (count >= target),
+                    "The early-map boss must unlock at the configured encounter count");
+                Check(!choices.Any(p => run.VisitedMapCoords.Contains(p.coord)), "Visited encounters must stay closed");
+                if (lockEncounters && target > 0 && count >= target)
+                {
+                    Check(choices.SequenceEqual([run.Map.BossMapPoint]), "Encounter locking must leave only the boss");
+                    break;
+                }
+            }
+            run.AddVisitedMapCoord(run.Map.BossMapPoint.coord);
+            Check(!MapTravel.GetTravelablePointsFrom(run, run.Map.BossMapPoint).Any(), "The boss must end the early map");
+            run.Map = new MockSinglePointActMap();
+            Check(!GravityRules.Applies(run), "Single-room debug maps must retain normal behavior");
+        }
     }
 
     private static void Check(bool value, string message)

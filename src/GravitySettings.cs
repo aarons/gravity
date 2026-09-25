@@ -13,7 +13,7 @@ internal static class GravitySettings
     public const int DefaultEncounterCount = 15;
     public const int MaxEncounterCount = 999;
     public static EncounterMode Mode { get; set; } = EncounterMode.Default;
-    public static bool LockEncountersAfterBossUnlock { get; set; } = false;
+    public static bool LockEncountersAfterBossUnlock { get; set; } = true;
     private static int _customEncounterCount = DefaultEncounterCount;
     public static int CustomEncounterCount
     {
@@ -70,6 +70,7 @@ internal static class GravitySettings
         }
         Hue = ReadInt("hue", DefaultHue, 0, 360);
         PulsePercent = ReadInt("pulse_percent", DefaultPulsePercent, 0, 100);
+        // Existing configs from before this option retain unrestricted exploration.
         var lockEncounters = config.GetValue("settings", "lock_encounters_after_boss_unlock", false);
         LockEncountersAfterBossUnlock = lockEncounters.VariantType == Variant.Type.Bool && lockEncounters.AsBool();
         var encounters = ReadInt("encounters", DefaultEncounterCount, -1, 1000);
