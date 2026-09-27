@@ -38,9 +38,9 @@ also provide access through their mod-settings panels.
 Run settings are fixed when a new run starts and persist through saves and later
 acts. Co-op uses the host's settings without changing clients' personal defaults.
 The host sends the run's settings at startup and when a player joins a saved or
-ongoing run. If synchronization fails, a warning appears and play continues with
-your current settings. When resuming, Gravity first tries its locally remembered
-settings for that host and run.
+ongoing run. If synchronization fails, play continues with your current settings.
+Gravity attempts one warning per connection, skipping it if another dialog is open.
+When resuming, Gravity first tries its locally remembered settings for that host and run.
 Settings are saved separately from gameplay modifiers; older Gravity saves migrate
 automatically, preserving Neow's normal starting choices.
 
@@ -75,6 +75,33 @@ dotnet build -c Release       # Build without installing.
 For a nonstandard Steam library, pass `-p:Sts2Path="/path/to/Slay the Spire 2"`.
 `Sts2DataDir` and `ModsPath` can also be overridden. `./install.sh --uninstall`
 removes the local development copy, including any extra files in that mod folder.
+
+### Local stable snapshot
+
+On Aaron's development machine, the stable installation is preserved outside
+Steam at `/Users/aaron/code/sts2-game-builds/stable-23811903/game`
+(public branch, Steam build **23811903**, copied September 27, 2026).
+The parent folder contains `steam-appmanifest.acf` and `snapshot.json` with
+verified SHA-256 checksums for all 430 copied files. Steam can switch the regular
+installation to beta without replacing this copy. Keep the snapshot unchanged;
+build against it without installing into it:
+
+```sh
+dotnet build -c Release -p:Sts2Path=/Users/aaron/code/sts2-game-builds/stable-23811903/game
+dotnet run --project tests/GravityIntegrationTests -c Release \
+  -p:Sts2Path=/Users/aaron/code/sts2-game-builds/stable-23811903/game
+```
+
+To test an already-built integration harness and mod DLL against stable without
+rebuilding either:
+
+```sh
+GRAVITY_TEST_GAME_DATA="/Users/aaron/code/sts2-game-builds/stable-23811903/game/SlayTheSpire2.app/Contents/Resources/data_sts2_macos_arm64" \
+  dotnet tests/GravityIntegrationTests/bin/Release/net9.0/GravityIntegrationTests.dll
+```
+
+Check Steam's currently selected branch before using the default build paths.
+The snapshot is a separate installation copy, not an isolated save profile.
 
 Keep mod behavior in `src/` and player-facing text in the localization files,
 using the existing helper with literal `Localize("key")` calls. Feature work

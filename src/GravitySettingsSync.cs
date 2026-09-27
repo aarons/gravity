@@ -44,6 +44,7 @@ internal sealed class GravitySettingsSync
     private static readonly ConditionalWeakTable<INetGameService, GravitySettingsSync> Sessions = new();
     private readonly INetGameService service;
     private GravitySettingsSnapshot? pending;
+    private bool warningAttempted;
 
     private GravitySettingsSync(INetGameService service)
     {
@@ -88,19 +89,42 @@ internal sealed class GravitySettingsSync
         pending = null;
         var host = ((INetClientGameService)service).NetClient?.HostNetId;
         if (snapshot == null || !snapshot.IsValid)
-            snapshot = Fallback(resuming && host is ulong id ? GravityRunSettingsCache.Read(id, seed) : null);
+            snapshot = Fallback(service, resuming && host is ulong id ? GravityRunSettingsCache.Read(id, seed) : null);
         if (host is ulong hostId) GravityRunSettingsCache.Store(hostId, seed, snapshot);
         return snapshot;
     }
 
-    internal static void Restore(INetGameService service, SerializableRun save) =>
-        GravityRunSettings.Store(save.ExtraFields, For(service).Take(save.SerializableRng.Seed!, resuming: true));
+    // The getter's return type changed between stable and beta. Resolve it at
+    // runtime so the same mod DLL works with either signature.
+    private static readonly PropertyInfo JoinService = AccessTools.Property(typeof(JoinFlow), "NetService");
 
-    internal static GravitySettingsSnapshot Fallback(GravitySettingsSnapshot? saved = null)
+    internal static INetGameService? GetJoinService(JoinFlow join) =>
+        JoinService.GetValue(join) as INetGameService;
+
+    internal static void Restore(INetGameService? service, SerializableRun save)
+    {
+        // Stable creates the service in Begin, not in the constructor. An
+        // inactive join flow has no connection or host snapshot to consume.
+        if (service == null) return;
+        GravityRunSettings.Store(save.ExtraFields, For(service).Take(save.SerializableRng.Seed!, resuming: true));
+    }
+
+    internal static GravitySettingsSnapshot Fallback(INetGameService? service = null, GravitySettingsSnapshot? saved = null)
     {
         var snapshot = saved ?? GravitySettingsSnapshot.FromPreferences();
         Console.WriteLine($"[Gravity] Could not synchronize run settings. Continuing with {snapshot}.");
-        ShowWarning();
+        // Without connection context, keep this log-only. Do not create global
+        // warning state or guess which session a deserialized save belongs to.
+        if (service != null)
+        {
+            var session = For(service);
+            if (!session.warningAttempted)
+            {
+                // A skipped or failed popup still consumes this connection's attempt.
+                session.warningAttempted = true;
+                ShowWarning();
+            }
+        }
         return snapshot;
     }
 
@@ -109,12 +133,7 @@ internal sealed class GravitySettingsSync
         try
         {
             var container = NModalContainer.Instance;
-            if (container == null) return;
-            if (container.OpenModal is Godot.Node open)
-            {
-                open.TreeExited += () => Godot.Callable.From(ShowWarning).CallDeferred();
-                return;
-            }
+            if (container == null || container.OpenModal != null) return;
             var popup = NErrorPopup.Create(MainFile.Localize("settings.title"),
                 MainFile.Localize("settings.sync_warning"), showReportBugButton: false);
             if (popup != null) container.Add(popup);
@@ -130,13 +149,24 @@ internal sealed class GravitySettingsSync
 [HarmonyPatch]
 internal static class RegisterGravitySettingsReceiverPatch
 {
-    private static IEnumerable<MethodBase> TargetMethods() =>
-        AccessTools.GetDeclaredConstructors(typeof(StartRunLobby))
-            .Concat(AccessTools.GetDeclaredConstructors(typeof(JoinFlow)));
-
-    private static void Postfix(INetGameService netService)
+    private static IEnumerable<MethodBase> TargetMethods()
     {
-        if (netService.Type == NetGameType.Client) GravitySettingsSync.For(netService);
+        foreach (var constructor in AccessTools.GetDeclaredConstructors(typeof(StartRunLobby)))
+            yield return constructor;
+        // Stable assigns the service inside Begin; beta receives it in the
+        // constructor. Both hooks run before the first host message can arrive.
+        var setter = AccessTools.PropertySetter(typeof(JoinFlow), "NetService");
+        if (setter != null) yield return setter;
+        else
+            foreach (var constructor in AccessTools.GetDeclaredConstructors(typeof(JoinFlow)))
+                yield return constructor;
+    }
+
+    private static void Postfix(object __instance)
+    {
+        var service = __instance is StartRunLobby lobby
+            ? lobby.NetService : GravitySettingsSync.GetJoinService((JoinFlow)__instance);
+        if (service?.Type == NetGameType.Client) GravitySettingsSync.For(service);
     }
 }
 
@@ -189,12 +219,12 @@ internal static class SendRejoinSettingsPatch
 internal static class ReceiveLoadedSettingsPatch
 {
     private static void Prefix(JoinFlow __instance, ClientLoadJoinResponseMessage message) =>
-        GravitySettingsSync.Restore(__instance.NetService, message.serializableRun);
+        GravitySettingsSync.Restore(GravitySettingsSync.GetJoinService(__instance), message.serializableRun);
 }
 
 [HarmonyPatch(typeof(JoinFlow), "HandleRejoinResponseMessage")]
 internal static class ReceiveRejoinSettingsPatch
 {
     private static void Prefix(JoinFlow __instance, ClientRejoinResponseMessage message) =>
-        GravitySettingsSync.Restore(__instance.NetService, message.serializableRun);
+        GravitySettingsSync.Restore(GravitySettingsSync.GetJoinService(__instance), message.serializableRun);
 }

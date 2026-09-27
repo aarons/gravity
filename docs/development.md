@@ -23,8 +23,11 @@ Gravity sends an immutable settings snapshot through the game's native reliable
 message transport immediately before its start/load/rejoin message. The client
 consumes the snapshot before accepting that run. Delivery and
 ordering use the existing transport, without a separate acknowledgment or retry
-protocol. Missing or invalid host settings show a dismissible warning and use a
-fixed local snapshot while the native start/join proceeds. New runs use current
+protocol. Missing or invalid host settings use a fixed local snapshot while the
+native start/join proceeds. Gravity logs each fallback and attempts a dismissible
+warning once per connection. If the UI is unavailable, another modal is open, or
+display fails, that attempt is skipped without deferral or retry. Save fallbacks
+without connection context only log. New runs use current
 preferences. Clients remember their most recent co-op snapshot in
 `user://gravity_run_settings.json`, matched by host and seed for load/rejoin
 fallbacks; starting a new run always captures fresh settings. Failure tests
@@ -59,6 +62,29 @@ dotnet build -c Release tests/GravityIntegrationTests
 GRAVITY_TEST_GAME_DATA="/path/to/game/data" \
   dotnet tests/GravityIntegrationTests/bin/Release/net9.0/GravityIntegrationTests.dll
 ```
+
+The [README's local stable snapshot](../README.md#local-stable-snapshot) records
+the preserved installation and commands for this development machine. Check both
+directions when changing compatibility: build the harness and mod against each
+branch, then run that exact output against both sets of game assemblies.
+
+The join-flow receiver hooks the service setter on stable and the constructor on
+beta. Its service getter is resolved at runtime because its return type differs
+between branches. The headless fixtures also resolve model initialization and RNG
+construction at runtime and avoid native client-service constructors; these test
+setup APIs differ even where Gravity's gameplay APIs remain compatible.
+
+Verified September 27, 2026 with stable Steam build **23811903** and public-beta
+build **24724944**: both Release builds completed with zero warnings, and the full
+offline integration suite passed in all four combinations:
+
+| Built against | Run against stable | Run against beta |
+| --- | --- | --- |
+| Stable | Passed | Passed |
+| Beta | Passed | Passed |
+
+Stable skips the beta-only co-op version-comparison check because it uses the
+older handshake API. These results do not replace live co-op or full-run testing.
 
 If the game reports that Gravity failed to initialize, inspect the exception in
 `SlayTheSpire2/logs/godot.log`. The generic assembly error does not identify the cause.

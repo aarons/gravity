@@ -7,6 +7,7 @@ using HarmonyLib;
 using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Logging;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Multiplayer;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
 using MegaCrit.Sts2.Core.Multiplayer.Messages.Lobby;
@@ -56,6 +57,8 @@ internal static class LobbyLifecycleTests
             SynchronizationFailures();
             ResumingFallback();
             ReceiverLifecycle();
+            WarningAttempts();
+            InactiveJoin();
         }
         finally
         {
@@ -64,7 +67,7 @@ internal static class LobbyLifecycleTests
             GravitySettings.LockEncountersAfterBossUnlock = false;
             File.Delete(cachePath);
         }
-        Console.WriteLine("Passed native start/load/rejoin transfer, warning-only fallback, remembered settings across sessions, preference isolation, disconnect cleanup, and another mod's messages.");
+        Console.WriteLine("Passed native start/load/rejoin transfer, once-per-connection warning attempts, remembered settings across sessions, preference isolation, disconnect cleanup, and another mod's messages.");
     }
 
     private static void NewRuns()
@@ -130,7 +133,7 @@ internal static class LobbyLifecycleTests
         var players = AccessTools.Field(typeof(StartRunLobby), "<Players>k__BackingField");
         players.SetValue(lobby, Activator.CreateInstance(players.FieldType));
         AccessTools.Field(typeof(StartRunLobby), "<GameMode>k__BackingField").SetValue(lobby, GameMode.Standard);
-        AccessTools.Method(typeof(RegisterGravitySettingsReceiverPatch), "Postfix").Invoke(null, [service]);
+        AccessTools.Method(typeof(RegisterGravitySettingsReceiverPatch), "Postfix").Invoke(null, [lobby]);
         service.RegisterMessageHandler<LobbyBeginRunMessage>((message, sender) =>
             Invoke(lobby, "HandleLobbyBeginRunMessage", message, sender));
         return lobby;
@@ -139,8 +142,17 @@ internal static class LobbyLifecycleTests
     private static JoinFlow Join(INetGameService service)
     {
         var join = (JoinFlow)RuntimeHelpers.GetUninitializedObject(typeof(JoinFlow));
-        AccessTools.Field(typeof(JoinFlow), "<NetService>k__BackingField").SetValue(join, service);
-        AccessTools.Method(typeof(RegisterGravitySettingsReceiverPatch), "Postfix").Invoke(null, [service]);
+        var setter = AccessTools.PropertySetter(typeof(JoinFlow), "NetService");
+        if (setter != null)
+            setter.Invoke(join, [service]); // Exercise stable's actual receiver hook.
+        else
+        {
+            // Skip beta's Godot-backed constructor initializers.
+            AccessTools.Field(typeof(JoinFlow), "<NetService>k__BackingField").SetValue(join, service);
+            AccessTools.Method(typeof(RegisterGravitySettingsReceiverPatch), "Postfix").Invoke(null, [join]);
+        }
+        Check(ReferenceEquals(GravitySettingsSync.GetJoinService(join), service),
+            "Join service lookup must support the installed branch's property type");
         // Begin normally subscribes this native handler before requesting a run.
         service.Disconnected += info => Invoke(join, "OnDisconnected", info);
         return join;
@@ -256,7 +268,7 @@ internal static class LobbyLifecycleTests
             }
             Check(run != null && GravityRunSettings.GetSnapshot(run) == new GravitySettingsSnapshot(31, true),
                 "Missing or invalid host data must continue with current settings");
-            Check(warnings == 1, "A failed transfer must show one warning");
+            Check(warnings == 1, "A failed transfer must attempt one warning");
             Check(!client.Disconnected && client.Sent.Count == 0, "Fallback must neither disconnect nor request a re-sync");
             Check(GravitySettings.NextRunRequirement == 31 && GravitySettings.LockEncountersAfterBossUnlock,
                 "Fallback must not change personal defaults");
@@ -361,6 +373,62 @@ internal static class LobbyLifecycleTests
             "A new connection must not inherit a pending snapshot");
     }
 
+    private static void WarningAttempts()
+    {
+        warnings = 0;
+        var client = new Endpoint(false);
+        var lobby = Lobby(client.Service, Proxy<IStartRunLobbyListener>((_, _) => null));
+        var expected = GravitySettingsSnapshot.FromPreferences();
+        Check(GravityRunSettings.GetSnapshot(Start(lobby, [])) == expected && warnings == 1,
+            "A missing startup capture must consume the connection's warning attempt");
+
+        // The fixture suppresses display: even an attempt that shows nothing must
+        // not be retried by later start/load/rejoin fallbacks on this connection.
+        var sync = GravitySettingsSync.For(client.Service);
+        Check(sync.Take("WARNINGTEST") == expected && warnings == 1,
+            "Repeated fallback must not retry a skipped warning");
+        var join = Join(client.Service);
+        foreach (var rejoin in new[] { false, true })
+        {
+            var save = RoundTripSave(SettingsTests.Save(SettingsTests.NewState()));
+            Check(GravityRunSettings.GetSnapshot(CompleteJoin(join, save, rejoin)) == expected && warnings == 1,
+                "Load and rejoin must share the connection's warning limit and continue normally");
+        }
+        client.Deliver(new GravityRunSettingsMessage { Requirement = 99 });
+        Check(sync.Take("WARNINGTEST") == new GravitySettingsSnapshot(99, false),
+            "Successful synchronization must still accept host settings after a warning");
+        client.Deliver(new GravityRunSettingsMessage { Requirement = -22 });
+        Check(sync.Take("WARNINGTEST") == expected && warnings == 1,
+            "A later invalid snapshot must not reset the warning limit");
+
+        var unscopedSave = RoundTripSave(SettingsTests.Save(SettingsTests.NewState()));
+        Check(GravityRunSettings.ReadSave(unscopedSave) == expected && warnings == 1,
+            "A save fallback without connection context must only log");
+
+        var other = new Endpoint(false);
+        Check(GravitySettingsSync.For(other.Service).Take("WARNINGTEST") == expected && warnings == 2,
+            "A separate connection must have its own warning attempt");
+        client.RaiseDisconnected();
+        client.Disconnected = false;
+        Check(GravitySettingsSync.For(client.Service).Take("WARNINGTEST") == expected && warnings == 3,
+            "Reconnecting must discard the old connection's warning limit");
+    }
+
+    private static void InactiveJoin()
+    {
+        var join = (JoinFlow)RuntimeHelpers.GetUninitializedObject(typeof(JoinFlow));
+        Check(GravitySettingsSync.GetJoinService(join) == null, "An inactive join can have no service");
+        var warningCount = warnings;
+        foreach (var rejoin in new[] { false, true })
+        {
+            var save = SettingsTests.Save(SettingsTests.NewState());
+            GravityRunSettings.Store(save.ExtraFields, new GravitySettingsSnapshot(47, true));
+            Check(GravityRunSettings.GetSnapshot(CompleteJoin(join, save, rejoin)) == new GravitySettingsSnapshot(47, true),
+                "A response without a service must preserve saved settings and allow the native handler to finish");
+        }
+        Check(warnings == warningCount, "An inactive join must not attempt a connection warning");
+    }
+
     private static bool CacheLocation(ref string __result) { __result = cachePath; return false; }
     private static void RecordWarning() => warnings++;
     private static bool Skip() => false;
@@ -380,7 +448,11 @@ internal static class LobbyLifecycleTests
     private static object? Invoke(object owner, string name, params object?[] args)
     {
         try { return AccessTools.Method(owner.GetType(), name).Invoke(owner, args); }
-        catch (TargetInvocationException e) when (e.InnerException != null) { throw e.InnerException; }
+        catch (TargetInvocationException e) when (e.InnerException != null)
+        {
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(e.InnerException).Throw();
+            throw;
+        }
     }
     private static T Proxy<T>(Func<MethodInfo, object?[]?, object?> callback) where T : class
     {
@@ -401,7 +473,8 @@ internal static class LobbyLifecycleTests
 
         internal Endpoint(bool host)
         {
-            Service = host ? Proxy<INetHostGameService>(Call) : Proxy<INetClientGameService>(Call);
+            if (host) Service = Proxy<INetHostGameService>(Call);
+            else Service = FixtureClient(Proxy<INetClientGameService>(Call));
             object? Call(MethodInfo method, object?[]? args)
             {
                 switch (method.Name)
@@ -447,7 +520,11 @@ internal static class LobbyLifecycleTests
             foreach (var handler in Handlers[type!].ToArray())
             {
                 try { handler.DynamicInvoke(received, sender); }
-                catch (TargetInvocationException e) when (e.InnerException != null) { throw e.InnerException; }
+                catch (TargetInvocationException e) when (e.InnerException != null)
+                {
+                    System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(e.InnerException).Throw();
+                    throw;
+                }
             }
         }
         internal void RaiseDisconnected(NetError reason = NetError.Quit)
@@ -455,6 +532,61 @@ internal static class LobbyLifecycleTests
             Disconnected = true;
             disconnected?.Invoke(new NetErrorInfo(reason, true));
         }
+    }
+
+    // Stable's JoinFlow requires a concrete service; beta also changes its
+    // constructor. Generate a constructor-free adapter so the harness never
+    // starts native sockets or binds to either branch's constructor signature.
+    private static readonly Type ClientAdapter = CreateClientAdapter();
+
+    private static INetClientGameService FixtureClient(INetClientGameService inner)
+    {
+        var client = RuntimeHelpers.GetUninitializedObject(ClientAdapter);
+        ClientAdapter.GetField("Inner")!.SetValue(client, inner);
+        return (INetClientGameService)client;
+    }
+
+    private static Type CreateClientAdapter()
+    {
+        var module = AssemblyBuilder.DefineDynamicAssembly(new AssemblyName("Gravity.ClientFixture"),
+            AssemblyBuilderAccess.Run).DefineDynamicModule("ClientFixture");
+        var type = module.DefineType("FixtureClient", TypeAttributes.Public, typeof(NetClientGameService),
+            [typeof(INetClientGameService)]);
+        var inner = type.DefineField("Inner", typeof(INetClientGameService), FieldAttributes.Public);
+        // Prevent Reflection.Emit from synthesizing a call to a parameterless
+        // base constructor, which does not exist on beta. This is never called.
+        var constructor = type.DefineConstructor(MethodAttributes.Private, CallingConventions.Standard, Type.EmptyTypes);
+        var constructorIl = constructor.GetILGenerator();
+        constructorIl.Emit(OpCodes.Ldnull);
+        constructorIl.Emit(OpCodes.Throw);
+        foreach (var contract in typeof(INetClientGameService).GetInterfaces().Append(typeof(INetClientGameService)))
+        foreach (var method in contract.GetMethods())
+        {
+            var implementation = type.DefineMethod(contract.Name + "." + method.Name,
+                MethodAttributes.Private | MethodAttributes.Virtual | MethodAttributes.Final | MethodAttributes.NewSlot);
+            var target = method;
+            if (method.IsGenericMethodDefinition)
+            {
+                var arguments = method.GetGenericArguments();
+                var parameters = implementation.DefineGenericParameters(arguments.Select(a => a.Name).ToArray());
+                for (var i = 0; i < arguments.Length; i++)
+                {
+                    parameters[i].SetGenericParameterAttributes(arguments[i].GenericParameterAttributes);
+                    parameters[i].SetInterfaceConstraints(arguments[i].GetGenericParameterConstraints());
+                }
+                target = method.MakeGenericMethod(parameters);
+            }
+            implementation.SetReturnType(target.ReturnType);
+            implementation.SetParameters(target.GetParameters().Select(p => p.ParameterType).ToArray());
+            var il = implementation.GetILGenerator();
+            il.Emit(OpCodes.Ldarg_0);
+            il.Emit(OpCodes.Ldfld, inner);
+            for (var i = 0; i < target.GetParameters().Length; i++) il.Emit(OpCodes.Ldarg, i + 1);
+            il.Emit(OpCodes.Callvirt, target);
+            il.Emit(OpCodes.Ret);
+            type.DefineMethodOverride(implementation, method);
+        }
+        return type.CreateType()!;
     }
 
     private sealed class FakeTransport() : NetClient(null!)

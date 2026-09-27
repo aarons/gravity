@@ -50,7 +50,10 @@ internal static class SettingsTests
             transpiler: new HarmonyMethod(typeof(SettingsTests), nameof(WithoutLogging)));
         fixture.Patch(AccessTools.Constructor(typeof(UnlockState), [typeof(IEnumerable<UnlockState>)]),
             prefix: new HarmonyMethod(typeof(SettingsTests), nameof(EmptyPlayersUnlocks)));
-        ModelDb.Init();
+        // Beta adds an optional injected-model list. Resolve the signature at
+        // runtime so one compiled harness can exercise both game branches.
+        var initializeModels = AccessTools.Method(typeof(ModelDb), nameof(ModelDb.Init));
+        initializeModels.Invoke(null, initializeModels.GetParameters().Select(p => p.DefaultValue).ToArray());
         ModelIdSerializationCache.Init();
         ModelDb.InitIds();
         var cache = typeof(ModifierModel).Assembly.GetType("MegaCrit.Sts2.Core.Saves.Runs.SavedPropertiesTypeCache");

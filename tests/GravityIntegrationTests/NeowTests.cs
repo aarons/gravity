@@ -74,7 +74,12 @@ internal static class NeowTests
         AccessTools.Field(typeof(Player), "_runState").SetValue(player, run);
         var neow = (Neow)ModelDb.Event<Neow>().ToMutable();
         AccessTools.Property(typeof(EventModel), nameof(EventModel.Owner)).SetValue(neow, player);
-        AccessTools.Property(typeof(EventModel), nameof(EventModel.Rng)).SetValue(neow, new Rng(123));
+        // The seed widened from uint on stable to ulong on beta.
+        var rngConstructor = AccessTools.Constructor(typeof(Rng), [typeof(ulong)])
+            ?? AccessTools.Constructor(typeof(Rng), [typeof(uint), typeof(int)]);
+        var rngArguments = rngConstructor.GetParameters().Select(p => p.DefaultValue).ToArray();
+        rngArguments[0] = Convert.ChangeType(123, rngConstructor.GetParameters()[0].ParameterType);
+        AccessTools.Property(typeof(EventModel), nameof(EventModel.Rng)).SetValue(neow, rngConstructor.Invoke(rngArguments));
         var options = (IReadOnlyList<EventOption>)AccessTools.Method(typeof(Neow), "GenerateInitialOptions").Invoke(neow, null)!;
         Check(run.Modifiers.SequenceEqual(modifiers), "Neow must not remove settings from the saved run");
         return (options, neow.InitialDescription.LocEntryKey);

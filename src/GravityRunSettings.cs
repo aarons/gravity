@@ -68,7 +68,7 @@ internal static class GravityRunSettings
     internal static void InitializeMultiplayer(RunState run, StartRunLobby lobby)
     {
         if (!Starting.TryGetValue(lobby, out var snapshot))
-            snapshot = GravitySettingsSync.Fallback();
+            snapshot = GravitySettingsSync.Fallback(lobby.NetService);
         Store(run.ExtraFields, snapshot);
         Starting.Remove(lobby);
     }
@@ -103,7 +103,7 @@ internal static class GravityRunSettings
             else
             {
                 // Normal joins attach the selected snapshot before loading. If
-                // that hook was missed, still let the run load with a warning.
+                // that hook was missed, still let the run load and log the fallback.
                 Store(save.ExtraFields, data.LegacyRequirement is int requirement
                     ? new(requirement is >= -1 and <= 1000 ? requirement : 15, data.LegacyLock ?? false)
                     : data.FromNetwork ? GravitySettingsSync.Fallback() : GravitySettingsSnapshot.Default);
