@@ -8,6 +8,7 @@ See the [README](../README.md) for building and installing locally.
 dotnet build -c Release
 dotnet run --project tests/GravityTests
 dotnet run --project tests/GravityIntegrationTests
+dotnet run --project tests/GravityIntegrationTests -- --map-only
 python3 scripts/validate_localization.py --english-only
 ```
 
@@ -15,6 +16,8 @@ The integration harness installs and removes Harmony patches in a separate proce
 against the installed game assemblies. It does not open or change a run. Its
 multiplayer fixtures use stand-ins for sockets and scenes; offline checks do not
 replace in-game testing of UI, full runs, or live co-op.
+The optional `--map-only` run isolates travel, history, and reveal eligibility from
+the settings and network patches, including resumed acts and fresh later acts.
 
 Gravity sends an immutable settings snapshot through the game's native reliable
 message transport immediately before its start/load/rejoin message. The client

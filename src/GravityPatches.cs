@@ -118,10 +118,14 @@ internal static class ControllerScrollPatch
 [HarmonyPatch(typeof(NMapScreen), nameof(NMapScreen.OnMapPointSelectedLocally))]
 internal static class LocalSelectionPatch
 {
-    private static bool Prefix(NMapScreen __instance, NMapPoint point, RunState ____runState) =>
-        !GravityRules.Applies(____runState) || (GravityMapView.Get(__instance)?.Falling != true
-            && !__instance.IsTraveling && __instance.IsTravelEnabled
-            && GravityRules.Progress(____runState).Available.Contains(point.Point.coord));
+    private static bool Prefix(NMapScreen __instance, NMapPoint point, RunState ____runState)
+    {
+        if (!GravityRules.Applies(____runState)) return true;
+        if (__instance.IsTraveling || !__instance.IsTravelEnabled
+            || !GravityRules.Progress(____runState).Available.Contains(point.Point.coord)) return false;
+        GravityMapView.Get(__instance)?.Finish();
+        return true;
+    }
 }
 
 [HarmonyPatch(typeof(MapSelectionSynchronizer), nameof(MapSelectionSynchronizer.PlayerVotedForMapCoord))]

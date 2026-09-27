@@ -128,47 +128,48 @@ for (var seed = 0; seed < 8; seed++)
     if (seed == 0)
         Check(FallingLayout.Simulate(bodies, -570, 510, 929)[^1].SequenceEqual(final), "Reload must produce exactly the same pile");
 }
-var playback = new FallingPlayback(false);
-for (var i = 0; i < 600; i++) playback.Process(1.0 / 60, false);
-Check(playback.Frame == 0 && !playback.Completed, "Selection pages must not consume the first fall");
-playback.Close(false);
-Check(!playback.Completed, "Closing a covered map must preserve its unseen fall");
-for (var attempt = 0; attempt < 10; attempt++)
-{
-    playback.Process(1.0 / 60, true);
-    playback.Process(1.0 / 60, true);
-    playback.Close(true);
-}
-Check(!playback.Started && !playback.Completed,
-    "Brief map opens between selection pages must not consume the fall");
-for (var i = 0; i < 60; i++) playback.Process(1.0 / 60, true);
-Check(playback.Started && !playback.Completed && playback.Frame > 0,
-    "An unobstructed map must begin falling");
-var pausedFrame = playback.Frame;
-for (var i = 0; i < 600; i++) playback.Process(1.0 / 60, false);
-Check(playback.Frame == pausedFrame && !playback.Completed, "Covered animation must pause without catching up");
-playback.Close(false);
-Check(playback.Frame == pausedFrame && !playback.Completed, "Closing while covered must preserve remaining playback");
-for (var i = 0; i < 600; i++) playback.Process(1.0 / 60, true);
+var playback = new FallingPlayback();
 Check(playback.Completed && playback.Frame == FallingLayout.Steps,
-    "Returning to an unobstructed map must finish the remaining fall");
-var skipped = new FallingPlayback(false);
-for (var i = 0; i < 60; i++) skipped.Process(1.0 / 60, true);
-skipped.Close(true);
-Check(skipped.Completed && skipped.Frame == FallingLayout.Steps,
-    "Closing during visible playback must retain the existing skip behavior");
-var seen = new FallingPlayback(true);
-seen.Process(1.0 / 60, false);
-seen.Close(false);
-Check(seen.Completed && seen.Frame == FallingLayout.Steps, "Previously viewed maps must remain settled");
-foreach (var encountersVisited in new[] { 1, 15, 60 })
+    "A newly attached map must default to the settled pile before opening");
+playback.Process(10, canBegin: true);
+Check(playback.Completed && playback.Frame == FallingLayout.Steps,
+    "Processing an unopened map must leave it settled");
+playback.Open(reveal: true);
+for (var i = 0; i < 600; i++) playback.Process(1.0 / 60, canBegin: false);
+Check(!playback.Completed && !playback.Playing && playback.Frame == FallingLayout.Steps,
+    "An extra selection page must defer the reveal while leaving the map settled");
+playback.Process(0.1, canBegin: true);
+Check(playback.Playing && playback.Frame == 0,
+    "The first unobstructed map must start the reveal with a short lead-in");
+playback.Process(0.5, canBegin: false);
+Check(playback.Playing && playback.Frame > 0,
+    "Losing visibility must not pause an animation that has already begun");
+var fallingFrame = playback.Frame;
+playback.Open(reveal: true);
+Check(playback.Frame == fallingFrame, "Repeated opens must not restart the reveal");
+playback.Process(10, canBegin: false);
+Check(playback.Completed && playback.Frame == FallingLayout.Steps,
+    "Elapsed time must finish the reveal even while covered or across a long frame");
+playback.Open(reveal: true);
+Check(playback.Completed, "A finished reveal must not replay when the map reopens");
+foreach (var canBegin in new[] { false, true })
+foreach (var secondsBeforeClose in new[] { 0.0, 0.1, 1.0 })
 {
-    var resumed = new FallingPlayback(false, encountersVisited);
-    Check(resumed.Completed && resumed.Frame == FallingLayout.Steps,
-        "A resumed act must immediately settle without a local viewing record");
-    resumed.Process(1.0 / 60, false);
-    resumed.Close(false);
-    Check(resumed.Completed && resumed.Frame == FallingLayout.Steps,
-        "Reconnect overlays must not leave an established act waiting for animation");
+    var skipped = new FallingPlayback();
+    skipped.Open(reveal: true);
+    skipped.Process(secondsBeforeClose, canBegin);
+    skipped.Finish();
+    Check(skipped.Completed && skipped.Frame == FallingLayout.Steps,
+        "Closing or selecting must settle the map, including while waiting behind an overlay");
+    skipped.Open(reveal: true);
+    skipped.Process(1, canBegin: true);
+    Check(skipped.Completed && skipped.Frame == FallingLayout.Steps,
+        "An interrupted reveal must stay settled on reopen without a saved viewing record");
 }
+var seen = new FallingPlayback();
+seen.Open(reveal: false);
+seen.Process(1, canBegin: true);
+seen.Open(reveal: true);
+Check(seen.Completed && seen.Frame == FallingLayout.Steps,
+    "Resumed, progressed or previously viewed maps must stay settled even after reopening");
 Console.WriteLine($"Passed {checks} Gravity progression, physics, and playback checks.");

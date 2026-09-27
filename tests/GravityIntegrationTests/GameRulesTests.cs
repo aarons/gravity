@@ -25,8 +25,10 @@ internal static class GameRulesTests
         GravityRunSettings.Initialize(run);
         var first = MapTravel.GetTravelablePointsFrom(run, map.StartingMapPoint).ToArray();
         Check(first.SequenceEqual([map.StartingMapPoint]), "Patched API must require the Ancient");
+        VerifyReveal(run, shouldAnimate: true);
         run.AddVisitedMapCoord(map.StartingMapPoint.coord);
         history[0].Add(new MapPointHistoryEntry());
+        VerifyReveal(run, shouldAnimate: true);
         var choices = MapTravel.GetTravelablePointsFrom(run, map.StartingMapPoint).ToArray();
         Check(choices.Length == 60, "Patched API must expose every encounter");
         Check(GravityTopBarProgress.Text(run) == "0/15", "A new act must start with an empty goal");
@@ -36,6 +38,7 @@ internal static class GameRulesTests
             var point = order[i];
             Check(MapTravel.GetTravelablePointsFrom(run, run.CurrentMapPoint!).Contains(point), "Backward travel failed");
             run.AddVisitedMapCoord(point.coord);
+            VerifyReveal(run, shouldAnimate: false);
             var entry = new MapPointHistoryEntry();
             history[0].Add(entry);
             Check(ReferenceEquals(run.GetHistoryEntryFor(new MapLocation(point.coord, 0)), entry), "History used row instead of visit order");
@@ -112,6 +115,7 @@ internal static class GameRulesTests
                 "BetterExperience's actual third boss must be reachable after its second boss");
             Console.WriteLine("Passed BetterExperience third-boss map discovery and travel checks.");
         }
+        VerifyResumedReveal();
         VerifyOpeningCombat();
         Console.WriteLine("Passed real-game travel, opening-combat progression and room-history checks using the installed patches.");
     }
@@ -132,6 +136,7 @@ internal static class GameRulesTests
             Check(MapTravel.GetTravelablePointsFrom(run, run.Map.StartingMapPoint)
                 .SequenceEqual([run.Map.StartingMapPoint]), "The opening fight must remain mandatory");
             Check(GravityRules.Progress(run).EncountersVisited == 0, "Unvisited opening combat must not count");
+            VerifyReveal(run, shouldAnimate: true);
             var encounters = GravityRules.Encounters(run.Map).ToArray();
             Check(encounters.Length == 17 && encounters.Count(p => p.coord == map.StartingMapPoint.coord) == 1,
                 "The early map's pool must include the opening combat exactly once");
@@ -146,6 +151,7 @@ internal static class GameRulesTests
                 Check(MapTravel.GetTravelablePointsFrom(run, run.Map.StartingMapPoint).Contains(point),
                     "Unvisited encounters must be available after the opening combat");
                 run.AddVisitedMapCoord(point.coord);
+                VerifyReveal(run, shouldAnimate: false);
                 count++;
                 var progress = GravityRules.Progress(run);
                 Check(progress.EncountersVisited == count, "Every combat, including the opening fight, must count");
@@ -166,6 +172,37 @@ internal static class GameRulesTests
             run.Map = new MockSinglePointActMap();
             Check(!GravityRules.Applies(run), "Single-room debug maps must retain normal behavior");
         }
+    }
+
+    private static void VerifyResumedReveal()
+    {
+        foreach (var visits in new[] { 0, 1, 2 })
+        {
+            var original = SettingsTests.NewState();
+            GravityRunSettings.Initialize(original);
+            var map = new TestMap();
+            original.Map = map;
+            var save = SettingsTests.Save(original);
+            save.VisitedMapCoords = new[] { map.StartingMapPoint.coord, new MapCoord(0, 1) }.Take(visits).ToList();
+            var restored = RunState.FromSerializable(save);
+            restored.Map = map;
+            VerifyReveal(restored, shouldAnimate: false);
+            // A later act in the same session is fresh even after resuming this one.
+            restored.CurrentActIndex++;
+            VerifyReveal(restored, shouldAnimate: true);
+            restored.AddVisitedMapCoord(map.StartingMapPoint.coord);
+            VerifyReveal(restored, shouldAnimate: true);
+        }
+    }
+
+    private static void VerifyReveal(RunState run, bool shouldAnimate)
+    {
+        var playback = new FallingPlayback();
+        playback.Open(GravityMapReveal.CanReveal(run));
+        Check(playback.Completed != shouldAnimate,
+            "Only fresh acts before ordinary play may attempt a reveal");
+        Check(playback.Frame == FallingLayout.Steps,
+            "A pending or skipped reveal must initially display the settled pile");
     }
 
     private static void Check(bool value, string message)

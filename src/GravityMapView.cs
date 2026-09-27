@@ -4,7 +4,6 @@ using System.Text;
 using Godot;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Map;
-using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.Screens.Map;
 using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;
 using MegaCrit.Sts2.Core.Nodes.Screens.ScreenContext;
@@ -22,16 +21,14 @@ internal sealed class GravityMapView
     private readonly RunState _run;
     private readonly NMapPoint[] _nodes;
     private readonly Control _container;
-    private readonly Control _points;
     private readonly GravityProgressDisplay _progressDisplay;
     private readonly Vec[][] _frames;
     private readonly Vector2[] _centerOffsets;
     private readonly string _key;
     private readonly float _floor;
     private readonly float _top;
-    private bool _opened;
-    private FallingPlayback? _playback;
-    public bool Falling => _playback is { Completed: false };
+    private readonly FallingPlayback _playback = new();
+    private bool Falling => _playback.Playing;
     public float MinScroll => _screen.Size.Y - 100f - _floor;
     public float MaxScroll => Math.Max(MinScroll, 160f - _top);
 
@@ -62,7 +59,6 @@ internal sealed class GravityMapView
         _screen = screen;
         _run = run;
         _container = screen.GetNode<Control>("TheMap");
-        _points = screen.GetNode<Control>("TheMap/Points");
         _nodes = points.Values.OrderBy(node => node.Point.coord.row).ThenBy(node => node.Point.coord.col).ToArray();
         _centerOffsets = new Vector2[_nodes.Length];
         var bodies = new FallingLayout.Body[_nodes.Length];
@@ -99,19 +95,22 @@ internal sealed class GravityMapView
             (Node: node, Radius: bodies[i].Radius - 12f)).Where(item => item.Node.Point.PointType == MapPointType.Boss));
         GravitySettings.AppearanceChanged += UpdateStatus;
         screen.TreeExiting += UnsubscribeAppearance;
+        ApplyFrame(_playback.Frame);
+        RefreshMarker();
+        SetScroll(MinScroll);
+        UpdateStatus();
+        _progressDisplay.UpdatePositions();
+        UpdateNavigation();
     }
 
     private void UnsubscribeAppearance() => GravitySettings.AppearanceChanged -= UpdateStatus;
 
     public void Open()
     {
-        if (!_opened)
-        {
-            _playback = new FallingPlayback(ViewedMaps.HasSectionKey("viewed", _key),
-                GravityRules.Progress(_run).EncountersVisited);
-            _opened = true;
-        }
-        ApplyFrame(_playback!.Frame);
+        var canReveal = GravityMapReveal.CanReveal(_run);
+        if (!canReveal) Finish();
+        _playback.Open(canReveal && !ViewedMaps.HasSectionKey("viewed", _key));
+        ApplyFrame(_playback.Frame);
         _screen.GetNode<NMapMarker>("TheMap/MapMarker").ResetMapPoint();
         if (!Falling) RefreshMarker();
         var progress = GravityRules.Progress(_run);
@@ -129,37 +128,45 @@ internal sealed class GravityMapView
 
     public void Process(double delta)
     {
-        if (!_opened) return;
-        if (Falling)
+        if (!_playback.Completed)
         {
-            _playback!.Process(delta, CanSeeMap());
-            ApplyFrame(_playback.Frame);
-            if (!Falling) CompletePlayback();
+            var wasFalling = Falling;
+            if (!GravityMapReveal.CanReveal(_run)) _playback.Finish();
+            else _playback.Process(delta, Falling || CanBeginReveal());
+            if (_playback.Completed) CompletePlayback();
+            else
+            {
+                ApplyFrame(_playback.Frame);
+                if (Falling && !wasFalling)
+                {
+                    _screen.GetNode<NMapMarker>("TheMap/MapMarker").ResetMapPoint();
+                    UpdateStatus();
+                }
+            }
         }
         if (!_screen.IsOpen) return;
         _progressDisplay.UpdatePositions();
     }
 
-    private bool CanSeeMap() => _screen.IsOpen && _screen.IsVisibleInTree()
+    // These checks only choose when to begin; waiting leaves the settled map usable.
+    private bool CanBeginReveal() => _screen.IsOpen && _screen.IsVisibleInTree()
         && ActiveScreenContext.Instance.IsCurrent(_screen)
-        && NGame.Instance?.Transition?.InTransition != true
-        && _container.Modulate.A >= 0.99f && _points.Modulate.A >= 0.99f
-        // The game's active context prioritizes the map even when a mod shows an overlay.
         && !(NOverlayStack.Instance?.Peek() is Control overlay && overlay.IsVisibleInTree());
 
     public void Finish()
     {
-        if (!Falling) return;
-        _playback!.Close(CanSeeMap());
-        if (!Falling) CompletePlayback();
+        if (_playback.Completed) return;
+        _playback.Finish();
+        CompletePlayback();
     }
 
     private void CompletePlayback()
     {
-        ApplyFrame(_playback!.Frame);
+        ApplyFrame(_playback.Frame);
         RefreshMarker();
         UpdateNavigation();
         UpdateStatus();
+        _progressDisplay.UpdatePositions();
         ViewedMaps.SetValue("viewed", _key, true);
         // This is presentation state only; encounter progress is in the normal run save.
         var error = ViewedMaps.Save("user://gravity_viewed_maps.cfg");

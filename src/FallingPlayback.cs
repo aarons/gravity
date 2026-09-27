@@ -1,36 +1,40 @@
 namespace Gravity;
 
-// Presentation time advances only while the player can see the map.
-internal sealed class FallingPlayback(bool previouslyViewed, int encountersVisited = 0)
+// Waiting for a good reveal opportunity still displays the usable, settled map.
+internal sealed class FallingPlayback
 {
-    private double _visibleSeconds;
+    private enum State { Settled, Waiting, Playing }
+    private State _state;
+    private bool _opened;
     private double _elapsed;
-    // A resumed act is already underway even if this client has no local viewing
-    // record. Restoring it must not gate map input on the introductory animation.
-    public bool Completed { get; private set; } = previouslyViewed || encountersVisited > 0;
-    public bool Started => _elapsed > 0;
-    public int Frame => Completed ? FallingLayout.Steps
-        : Math.Min(FallingLayout.Steps, (int)(_elapsed / FallingLayout.StepSeconds));
+    public bool Completed => _state == State.Settled;
+    public bool Playing => _state == State.Playing;
+    public int Frame => !Playing ? FallingLayout.Steps
+        : (int)Math.Clamp((_elapsed - 0.35) * 2 / FallingLayout.StepSeconds, 0, FallingLayout.Steps);
 
-    public void Process(double delta, bool visible)
+    public void Open(bool reveal)
     {
-        if (!visible)
-        {
-            _visibleSeconds = 0;
-            return;
-        }
-        if (Completed) return;
-        var seconds = Math.Clamp(delta, 0, 0.1);
-        // Let the map finish appearing, and ignore brief opens between selection pages.
-        _visibleSeconds += seconds;
-        if (_visibleSeconds < 0.35) return;
-        _elapsed += seconds * 2;
-        Completed = Frame == FallingLayout.Steps;
+        if (_opened) return;
+        _opened = true;
+        if (reveal) _state = State.Waiting;
     }
 
-    public void Close(bool visible)
+    public void Process(double delta, bool canBegin)
     {
-        if (Started && visible) Completed = true;
-        _visibleSeconds = 0;
+        if (Completed) return;
+        if (_state == State.Waiting)
+        {
+            if (!canBegin) return;
+            _state = State.Playing;
+        }
+        // Visibility matters only when starting. Once begun, the reveal never pauses.
+        _elapsed += Math.Max(delta, 0);
+        if (Frame == FallingLayout.Steps) Finish();
+    }
+
+    public void Finish()
+    {
+        _state = State.Settled;
+        _opened = true;
     }
 }

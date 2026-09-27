@@ -18,8 +18,11 @@ By default, ordinary encounters lock after 15 visits, requiring you to move on t
 the boss. Acts with multiple bosses keep their boss sequence. Each
 act starts a fresh encounter count. The pile stays in place when you reopen the
 map or reload a save, and controller navigation follows the new layout.
-Resuming an act with encounters already visited opens directly to the settled pile,
-even if that player's local animation history is missing.
+Fresh acts make a best-effort falling reveal when the map is visible, allowing
+extra selection pages after the Ancient to finish first. The map stays usable
+while waiting; closing it or choosing a destination finishes the reveal immediately.
+Resuming or rejoining opens directly to the settled pile, even if that player's
+local animation history is missing.
 
 ## Settings
 

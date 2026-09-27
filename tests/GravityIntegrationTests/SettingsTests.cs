@@ -56,7 +56,7 @@ internal static class SettingsTests
         var cache = typeof(ModifierModel).Assembly.GetType("MegaCrit.Sts2.Core.Saves.Runs.SavedPropertiesTypeCache");
         if (cache != null) AccessTools.Method(cache, "InjectTypeIntoCache").Invoke(null, [typeof(OtherSettingsModifier)]);
         MessageTypes.Initialize();
-        Check(MessageTypes.Count <= 256, "Native message IDs must fit the game's one-byte packet header");
+        Check(!MessageTypes.TryGetMessageType(256, out _), "Native message IDs must fit the game's one-byte packet header");
         Check(MessageTypes.TryGetMessageType(MessageTypes.TypeToId<GravityRunSettingsMessage>(), out var messageType)
             && messageType == typeof(GravityRunSettingsMessage), "Native discovery must register Gravity's message");
         Check(MessageTypes.TypeToId<OtherSettingsMessage>() != MessageTypes.TypeToId<GravityRunSettingsMessage>(),
