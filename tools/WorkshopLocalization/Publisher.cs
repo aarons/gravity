@@ -16,7 +16,7 @@ internal interface IWorkshopClient : IDisposable
     RemoteItem Read(ulong itemId, string language);
     void UploadContent(PreparedRelease release, RemoteItem previous);
     void UploadPreviews(PreparedRelease release, RemoteItem previous);
-    void VerifyPreviewDownloads(Preview[] previews, Func<Preview[]> refresh);
+    string[] VerifyPreviewDownloads(Preview[] previews, Func<Preview[]> refresh);
     void ReconcileDependencies(ulong itemId, ulong[] previous, ulong[] desired);
     void UploadListing(ulong itemId, Listing listing);
 }
@@ -97,18 +97,26 @@ internal sealed class Publisher(IWorkshopClient client, string stateDirectory, A
         return remote;
     }
 
-    private void VerifyPreviews(PreparedRelease release, RemoteItem remote)
+    private bool PreviewsMatch(PreparedRelease release, RemoteItem remote)
     {
         if (!PreviewGallery.Matches(release, remote))
-            throw new InvalidOperationException("Steam preview filenames or order did not match the prepared gallery. Retry ./release.sh --previews-only.");
-        client.VerifyPreviewDownloads(remote.Previews, () =>
+            return false;
+        var hashes = client.VerifyPreviewDownloads(remote.Previews, () =>
         {
             var refreshed = Read(release.ItemId, "english");
             if (!PreviewGallery.Matches(release, refreshed))
                 throw new InvalidOperationException("Steam gallery changed during verification. Retry ./release.sh --previews-only.");
             return refreshed.Previews;
         });
-        log($"Verified {PreviewGallery.Files(release).Length} shared previews: filenames, order, and downloadable image headers.");
+        return hashes.SequenceEqual(PreviewGallery.Files(release)
+            .Select(path => Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(path)))));
+    }
+
+    private void VerifyPreviews(PreparedRelease release, RemoteItem remote)
+    {
+        if (!PreviewsMatch(release, remote))
+            throw new InvalidOperationException("Steam preview filenames, order, or image bytes did not match the prepared gallery. Retry ./release.sh --previews-only.");
+        log($"Verified {PreviewGallery.Files(release).Length} shared previews: filenames, order, and complete image bytes.");
     }
 
     public int Run(PreparedRelease release, string? language, bool previewsOnly = false, string? itemDirectory = null)
@@ -156,14 +164,12 @@ internal sealed class Publisher(IWorkshopClient client, string stateDirectory, A
 
         if (language == null)
         {
+            // Verify before changing shared content. A healthy, byte-identical gallery
+            // (including a manual repair) must survive ordinary mod releases untouched.
+            var previewsMatch = PreviewsMatch(release, englishBefore);
             if (englishBefore.Metadata == release.Marker)
             {
                 log("Skip shared content: Steam already has this prepared content fingerprint.");
-                if (!PreviewGallery.Matches(release, englishBefore))
-                {
-                    Backup(release, "previews", englishBefore);
-                    client.UploadPreviews(release, englishBefore);
-                }
             }
             else
             {
@@ -173,7 +179,15 @@ internal sealed class Publisher(IWorkshopClient client, string stateDirectory, A
                     throw new InvalidOperationException("Content upload could not be verified. Rerun release to reconcile with Steam.");
                 log("Verified shared content upload.");
             }
-            VerifyPreviews(release, Read(release.ItemId, "english"));
+            if (previewsMatch)
+                log("Skip shared previews: Steam already serves the prepared image bytes in order.");
+            else
+            {
+                var current = Read(release.ItemId, "english");
+                Backup(release, "previews", current);
+                client.UploadPreviews(release, current);
+                VerifyPreviews(release, Read(release.ItemId, "english"));
+            }
             if (release.Settings.TryGetProperty("dependencies", out var dependencies))
             {
                 var current = Read(release.ItemId, "english");

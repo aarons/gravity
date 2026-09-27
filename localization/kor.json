@@ -16,6 +16,7 @@
   "settings.pulse_preview": "방문 가능한 지점",
   "settings.done": "완료",
   "settings.save_error": "설정을 저장하지 못했습니다. 다시 시도해 주세요.",
+  "settings.sync_warning": "호스트와 Gravity 설정을 동기화하지 못했습니다. 계속 플레이할 수 있지만 설정이 서로 다를 수 있습니다. 다시 접속해 주세요.",
   "settings.off": "끄기",
   "settings.percent": "{0}%",
   "settings.appearance_title": "Gravity 표시 설정",

@@ -57,10 +57,18 @@ in as the item's owner for updates.
 - Preparation recovers a legacy `workshop/first-upload/mod_id.txt` automatically.
   Conflicting saved IDs stop the workflow.
 
-The publisher reads localized listings back and checks gallery filenames, order,
-and image availability. Gallery verification failures do not automatically reupload
-images; retry release to verify again. These checks do not establish correct
-animation or public page rendering.
+The publisher reads localized listings back and compares gallery filenames, order,
+and complete downloaded image bytes with the prepared files. An identical gallery
+is preserved across mod releases, including images repaired manually. Gallery
+updates are submitted separately from mod content; changing a file's bytes triggers
+an update even when its filename stays the same.
+
+An existing gallery with matching filenames is checked before uploading mod content.
+If an image is unavailable, the publisher retries verification every 15 seconds for
+up to two minutes, then stops without reuploading it automatically. Retry release
+to check again, or use `--previews-only` to explicitly reupload. Steam accepting an
+upload does not guarantee that its image URL works. These checks do not establish
+correct animation or public page rendering.
 
 For targeted updates from the prepared release:
 

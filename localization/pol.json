@@ -16,6 +16,7 @@
   "settings.pulse_preview": "Dostępne spotkanie",
   "settings.done": "Gotowe",
   "settings.save_error": "Nie udało się zapisać ustawień. Spróbuj ponownie.",
+  "settings.sync_warning": "Nie udało się zsynchronizować ustawień Gravity z gospodarzem. Możesz grać dalej, ale twoje ustawienia mogą się różnić. Spróbuj połączyć się ponownie.",
   "settings.off": "Wył.",
   "settings.percent": "{0}%",
   "settings.appearance_title": "Wygląd Gravity",

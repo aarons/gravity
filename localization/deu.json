@@ -16,6 +16,7 @@
   "settings.pulse_preview": "Verfügbare Begegnung",
   "settings.done": "Fertig",
   "settings.save_error": "Einstellungen konnten nicht gespeichert werden. Bitte versuche es erneut.",
+  "settings.sync_warning": "Die Gravity-Einstellungen konnten nicht mit dem Host synchronisiert werden. Du kannst weiterspielen, aber deine Einstellungen weichen möglicherweise ab. Versuche, dich erneut zu verbinden.",
   "settings.off": "Aus",
   "settings.percent": "{0}%",
   "settings.appearance_title": "Gravity-Darstellung",

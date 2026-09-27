@@ -192,7 +192,6 @@ internal sealed class SteamWorkshopClient : IWorkshopClient
             settings.TryGetProperty("maxBranch", out var max) ? max.GetString()! : ""), "required game versions");
         Require(SteamUGC.SetItemContent(handle, Path.Combine(release.Workspace, "content")), "mod content");
         Require(SteamUGC.SetItemPreview(handle, Path.Combine(release.Workspace, "image.png")), "thumbnail");
-        SetPreviews(handle, release, previous);
         // This marker is committed with the content. A lost local receipt cannot cause a repeat upload.
         Require(SteamUGC.SetItemMetadata(handle, release.Marker), "release fingerprint");
         Submit(handle, settings.TryGetProperty("changeNote", out var note) ? note.GetString() : null, "upload shared content");
@@ -218,10 +217,10 @@ internal sealed class SteamWorkshopClient : IWorkshopClient
         Submit(handle, null, "upload shared previews");
     }
 
-    public void VerifyPreviewDownloads(Preview[] previews, Func<Preview[]> refresh)
+    public string[] VerifyPreviewDownloads(Preview[] previews, Func<Preview[]> refresh)
     {
         using var http = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
-        PreviewDownloads.Verify(previews, refresh, http, Console.WriteLine);
+        return PreviewDownloads.Verify(previews, refresh, http, Console.WriteLine);
     }
 
     public void ReconcileDependencies(ulong itemId, ulong[] previous, ulong[] desired)

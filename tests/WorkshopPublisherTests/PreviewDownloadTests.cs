@@ -1,4 +1,5 @@
 using System.Net;
+using System.Security.Cryptography;
 using WorkshopLocalization;
 
 internal static class PreviewDownloadTests
@@ -33,8 +34,16 @@ internal static class PreviewDownloadTests
         });
         using var http = new HttpClient(handler);
         Preview[] gallery = [new("good.gif", 0, "https://example.test/good"), new("late.gif", 0, "https://example.test/late"), new("video", 1)];
-        PreviewDownloads.Verify(gallery, () => gallery, http, _ => { }, delay => clock += delay, () => clock);
+        var hashes = PreviewDownloads.Verify(gallery, () => gallery, http, _ => { }, delay => clock += delay, () => clock);
         Require(counts["/good"] == 1 && counts["/late"] == 3 && clock == TimeSpan.FromSeconds(30));
+        var expectedHash = Convert.ToHexStringLower(SHA256.HashData("GIF89a0123456789abcdef"u8));
+        Require(hashes.SequenceEqual(new[] { expectedHash, expectedHash }));
+
+        // A valid header is insufficient: read and hash the entire response, with a size cap.
+        Check((_, _) => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new ByteArrayContent("GIF89a0123456789abcdef"u8.ToArray().Concat(new byte[1_000_000]).ToArray())
+        }, succeeds: false, expectedCalls: 7, expectedWaits: 6, expectedRefreshes: 1);
 
         // Request time counts against the budget, not just sleeps.
         clock = TimeSpan.Zero;

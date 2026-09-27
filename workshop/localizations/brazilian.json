@@ -1,4 +1,4 @@
 {
   "title": "Gravity",
-  "description": "Os encontros caem e formam uma pilha. Não há caminhos a seguir, então você pode escolher os encontros em qualquer ordem. Após 15 encontros (número configurável), o chefe é desbloqueado. Divirta-se!\n\nO texto em inglês é a fonte original, e estas traduções foram feitas por IA. Correções e melhorias são sempre bem-vindas!"
+  "description": "Os encontros caem e formam uma pilha. Não há caminhos a seguir, então você pode escolher os encontros em qualquer ordem. Por padrão, após 15 encontros, os encontros restantes são bloqueados e o chefe é desbloqueado. Ajuste essas regras nas configurações. Divirta-se!\n\nO texto em inglês é a fonte original, e estas traduções foram feitas por IA. Correções e melhorias são sempre bem-vindas!"
 }

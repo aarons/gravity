@@ -16,6 +16,7 @@
   "settings.pulse_preview": "Доступная встреча",
   "settings.done": "Готово",
   "settings.save_error": "Не удалось сохранить настройки. Попробуйте ещё раз.",
+  "settings.sync_warning": "Не удалось синхронизировать настройки Gravity с хостом. Можно продолжить игру, но ваши настройки могут отличаться. Попробуйте подключиться заново.",
   "settings.off": "Выкл.",
   "settings.percent": "{0}%",
   "settings.appearance_title": "Оформление Gravity",

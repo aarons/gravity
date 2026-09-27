@@ -16,6 +16,7 @@
   "settings.pulse_preview": "Rencontre disponible",
   "settings.done": "Terminé",
   "settings.save_error": "Impossible d’enregistrer les paramètres. Veuillez réessayer.",
+  "settings.sync_warning": "Impossible de synchroniser les paramètres de Gravity avec ceux de l’hôte. Vous pouvez continuer à jouer, mais vos paramètres peuvent différer. Essayez de vous reconnecter.",
   "settings.off": "Désactivé",
   "settings.percent": "{0} %",
   "settings.appearance_title": "Apparence de Gravity",

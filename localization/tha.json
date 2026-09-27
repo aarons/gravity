@@ -16,6 +16,7 @@
   "settings.pulse_preview": "จุดเผชิญหน้าที่ไปได้",
   "settings.done": "เสร็จสิ้น",
   "settings.save_error": "บันทึกการตั้งค่าไม่ได้ โปรดลองอีกครั้ง",
+  "settings.sync_warning": "ซิงค์การตั้งค่า Gravity กับโฮสต์ไม่สำเร็จ คุณยังเล่นต่อได้ แต่การตั้งค่าของคุณอาจต่างจากโฮสต์ ลองเชื่อมต่อใหม่",
   "settings.off": "ปิด",
   "settings.percent": "{0}%",
   "settings.appearance_title": "รูปลักษณ์ของ Gravity",

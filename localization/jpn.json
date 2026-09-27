@@ -16,6 +16,7 @@
   "settings.pulse_preview": "選択可能なマス",
   "settings.done": "完了",
   "settings.save_error": "設定を保存できませんでした。もう一度お試しください。",
+  "settings.sync_warning": "Gravityの設定をホストと同期できませんでした。プレイは続けられますが、設定が異なる可能性があります。再接続をお試しください。",
   "settings.off": "オフ",
   "settings.percent": "{0}%",
   "settings.appearance_title": "Gravityの表示設定",

@@ -16,6 +16,7 @@
   "settings.pulse_preview": "可选遭遇",
   "settings.done": "完成",
   "settings.save_error": "无法保存设置，请重试。",
+  "settings.sync_warning": "无法与房主同步 Gravity 设置。你可以继续游戏，但设置可能与房主不同。请尝试重新连接。",
   "settings.off": "关闭",
   "settings.percent": "{0}%",
   "settings.appearance_title": "Gravity 外观",

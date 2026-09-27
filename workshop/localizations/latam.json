@@ -1,4 +1,4 @@
 {
   "title": "Gravity",
-  "description": "Los encuentros caen y se amontonan. No hay caminos que seguir, así que puedes elegirlos en cualquier orden. El jefe se desbloquea después de 15 encuentros (puedes cambiar esta cantidad). ¡Diviértete!\n\nEl texto original está en inglés y estas traducciones se hicieron con IA. ¡Las correcciones y mejoras siempre son bienvenidas!"
+  "description": "Los encuentros caen y se amontonan. No hay caminos que seguir, así que puedes elegirlos en cualquier orden. De forma predeterminada, después de 15 encuentros, los encuentros restantes se bloquean y el jefe se desbloquea. Puedes ajustar estas reglas en la configuración. ¡Diviértete!\n\nEl texto original está en inglés y estas traducciones se hicieron con IA. ¡Las correcciones y mejoras siempre son bienvenidas!"
 }

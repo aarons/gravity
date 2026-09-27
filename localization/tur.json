@@ -16,6 +16,7 @@
   "settings.pulse_preview": "Seçilebilir karşılaşma",
   "settings.done": "Tamam",
   "settings.save_error": "Ayarlar kaydedilemedi. Lütfen tekrar dene.",
+  "settings.sync_warning": "Gravity ayarları ev sahibinin ayarlarıyla eşitlenemedi. Oynamaya devam edebilirsin, ancak ayarların farklı olabilir. Yeniden bağlanmayı dene.",
   "settings.off": "Kapalı",
   "settings.percent": "%{0}",
   "settings.appearance_title": "Gravity görünümü",

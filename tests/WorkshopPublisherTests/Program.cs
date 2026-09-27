@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Security.Cryptography;
 using WorkshopLocalization;
 
 var tests = new (string Name, Action Test)[]
@@ -124,7 +125,39 @@ var tests = new (string Name, Action Test)[]
         Assert(first.Count(c => c.StartsWith("listing:")) == 2);
         Assert(publisher.Run(release, null) == 0);
         Assert(steam.Calls.SequenceEqual(first));
-        Assert(Directory.GetFiles(Path.Combine(state, "backups"), "*.json", SearchOption.AllDirectories).Length == 4);
+        Assert(Directory.GetFiles(Path.Combine(state, "backups"), "*.json", SearchOption.AllDirectories).Length == 5);
+    })),
+    ("new mod release preserves identical gallery bytes", () => WithFixture((release, steam, publisher, state) =>
+    {
+        Assert(publisher.Run(release, null) == 0);
+        steam.Calls.Clear();
+        release = release with { ContentFingerprint = new string('b', 64) };
+        Assert(publisher.Run(release, null) == 0);
+        Assert(steam.Calls.SequenceEqual(new[] { "content" }));
+    })),
+    ("manual gallery repair is preserved without a local receipt", () => WithFixture((release, steam, publisher, state) =>
+    {
+        steam.UploadPreviews(release, steam.Read(release.ItemId, "english"));
+        steam.Calls.Clear();
+        Assert(publisher.Run(release, null) == 0);
+        Assert(!steam.Calls.Contains("previews") && steam.ContentUploads == 1);
+    })),
+    ("same filename with changed image bytes uploads the gallery", () => WithFixture((release, steam, publisher, state) =>
+    {
+        Assert(publisher.Run(release, null) == 0);
+        steam.Calls.Clear();
+        File.WriteAllText(PreviewGallery.Files(release)[0], "changed image bytes");
+        Assert(publisher.Run(release, null) == 0);
+        Assert(steam.Calls.SequenceEqual(new[] { "previews" }));
+    })),
+    ("unavailable existing gallery stops before replacing content or images", () => WithFixture((release, steam, publisher, state) =>
+    {
+        Assert(publisher.Run(release, null) == 0);
+        steam.Calls.Clear();
+        steam.FailPreviewDownloads = true;
+        release = release with { ContentFingerprint = new string('b', 64) };
+        Throws<IOException>(() => publisher.Run(release, null));
+        Assert(steam.Calls.Count == 0);
     })),
     ("partial listing failure continues and targeted retry excludes content", () => WithFixture((release, steam, publisher, state) =>
     {
@@ -291,7 +324,6 @@ sealed class FakeSteam : IWorkshopClient
         Visibility = release.Settings.GetProperty("visibility").GetString();
         var english = release.Listings.Single(listing => listing.Language == "english");
         Text["english"] = (english.Title, english.Description);
-        SetPreviews(release);
         if (LoseContentResponse) throw new TimeoutException("Simulated committed upload with lost response");
     }
     private void SetPreviews(PreparedRelease release)
@@ -299,6 +331,8 @@ sealed class FakeSteam : IWorkshopClient
         if (IgnorePreviews) return;
         Previews = Previews.Where(p => p.Type != 0).Concat(PreviewGallery.Files(release)
             .Select(p => new Preview(Path.GetFileName(p), 0))).ToArray();
+        PreviewHashes = PreviewGallery.Files(release)
+            .Select(path => Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(path)))).ToArray();
     }
     public void UploadPreviews(PreparedRelease release, RemoteItem previous)
     {
@@ -306,10 +340,12 @@ sealed class FakeSteam : IWorkshopClient
     }
     public bool FailPreviewDownloads;
     public int PreviewChecks;
-    public void VerifyPreviewDownloads(Preview[] previews, Func<Preview[]> refresh)
+    public string[] PreviewHashes = [];
+    public string[] VerifyPreviewDownloads(Preview[] previews, Func<Preview[]> refresh)
     {
         PreviewChecks++;
         if (FailPreviewDownloads) throw new IOException("Simulated preview 404");
+        return PreviewHashes;
     }
     public void ReconcileDependencies(ulong itemId, ulong[] previous, ulong[] desired)
     {

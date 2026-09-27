@@ -16,6 +16,7 @@
   "settings.pulse_preview": "Encontro disponível",
   "settings.done": "Pronto",
   "settings.save_error": "Não foi possível salvar as configurações. Tente novamente.",
+  "settings.sync_warning": "Não foi possível sincronizar as configurações do Gravity com as do anfitrião. Você pode continuar jogando, mas suas configurações podem ser diferentes. Tente se reconectar.",
   "settings.off": "Desativado",
   "settings.percent": "{0}%",
   "settings.appearance_title": "Aparência do Gravity",
