@@ -1,4 +1,4 @@
 {
   "title": "Gravity",
-  "description": "Los encuentros caen y se amontonan. No hay caminos que seguir, así que puedes elegirlos en cualquier orden. Por defecto, tras visitar 15 encuentros, los restantes se bloquean y el jefe se desbloquea. Puedes cambiar estas reglas en los ajustes. ¡Que te diviertas!\n\nEl texto original está en inglés y estas traducciones se han realizado con IA. ¡Las correcciones y mejoras son siempre bienvenidas!"
+  "description": "Los encuentros caen y se amontonan, y puedes completarlos en cualquier orden. Tras 15 encuentros (cantidad configurable), se desbloquea el jefe. ¡Que te diviertas!\n\nNota: el modo multijugador sigue mejorándose. Si te encuentras con algún problema, avísame. Siempre se agradecen los detalles sobre cómo reproducir el error, pero sin compromiso: con que me cuentes que algo ha ido mal ya me ayudas.\n\nEl texto original está en inglés y estas traducciones se han realizado con IA. ¡Las correcciones y mejoras son siempre bienvenidas!"
 }

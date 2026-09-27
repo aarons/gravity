@@ -1,4 +1,4 @@
 {
   "title": "Gravity",
-  "description": "Gli incontri cadono formando un mucchio. Non ci sono percorsi da seguire, quindi puoi sceglierli nell'ordine che preferisci. Per impostazione predefinita, dopo 15 incontri, quelli rimanenti si bloccano e il boss si sblocca. Puoi modificare queste regole nelle impostazioni. Buon divertimento!\n\nIl testo originale è in inglese e queste traduzioni sono state realizzate con l'IA. Correzioni e miglioramenti sono sempre benvenuti!"
+  "description": "Gli incontri cadono formando un mucchio e puoi completarli nell'ordine che preferisci. Dopo 15 incontri (numero modificabile nelle impostazioni), il boss si sblocca. Buon divertimento!\n\nNota: il supporto multigiocatore è ancora in fase di miglioramento. Se riscontri problemi, fammelo sapere. I dettagli su come riprodurre l'errore sono sempre utili, ma non preoccuparti: va benissimo anche solo segnalare che qualcosa è andato storto.\n\nIl testo originale è in inglese e queste traduzioni sono state realizzate con l'IA. Correzioni e miglioramenti sono sempre benvenuti!"
 }

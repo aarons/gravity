@@ -10,6 +10,7 @@ workshop/.release-state/
 __pycache__/
 /archive/
 /output/recordings/
+/output/multiplayer/
 mod-uploader.log
 .godot/
 

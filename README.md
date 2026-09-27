@@ -123,6 +123,8 @@ release before publishing; changes to its inputs require preparing again.
 
 Further guidance:
 
+- [Local multiplayer test](docs/multiplayer-test.md): isolated beta host/client setup,
+  different preferences, reconnect checks, and the beta's live-rejoin UI limitation.
 - [Development checks](docs/development.md): tests, alternate game installations,
   and optional library integrations.
 - [Localization](docs/localization.md): source files, review workflow, and updater options.

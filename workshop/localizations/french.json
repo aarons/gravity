@@ -1,4 +1,4 @@
 {
   "title": "Gravity",
-  "description": "Les rencontres tombent et s’entassent. Il n’y a aucun chemin à suivre : vous pouvez les choisir dans l’ordre que vous voulez. Par défaut, après 15 rencontres, les rencontres restantes se verrouillent et le boss se débloque. Vous pouvez modifier ces règles dans les paramètres. Amusez-vous bien !\n\nLe texte anglais sert de référence et ces traductions ont été réalisées par une IA. Vos corrections et améliorations sont toujours les bienvenues !"
+  "description": "Les rencontres tombent et s’entassent. Vous pouvez les faire dans l’ordre que vous voulez. Le boss se débloque après 15 rencontres (ce nombre est configurable). Amusez-vous bien !\n\nRemarque : la prise en charge du multijoueur est encore en cours d’amélioration. Si vous rencontrez un problème, n’hésitez pas à me le signaler. Des détails sur la façon de reproduire le problème sont toujours appréciés, mais aucune pression : un simple signalement est déjà utile.\n\nLe texte anglais sert de référence et ces traductions ont été réalisées par une IA. Vos corrections et améliorations sont toujours les bienvenues !"
 }

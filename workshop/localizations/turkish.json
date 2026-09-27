@@ -1,4 +1,4 @@
 {
   "title": "Gravity",
-  "description": "Karşılaşmalar düşerek bir yığın oluşturur. İzlemen gereken yollar olmadığı için karşılaşmaları istediğin sırayla seçebilirsin. Varsayılan olarak 15 karşılaşmadan sonra kalan karşılaşmalar kilitlenir ve patronun kilidi açılır. Bu kuralları ayarlardan değiştirebilirsin. İyi eğlenceler!\n\nKaynak metin İngilizcedir ve bu çeviriler yapay zekâ tarafından hazırlanmıştır. Düzeltme ve iyileştirme önerileri her zaman memnuniyetle karşılanır!"
+  "description": "Karşılaşmalar düşerek bir yığın oluşturur ve onları istediğin sırayla tamamlayabilirsin. 15 karşılaşmadan sonra patronun kilidi açılır (bu sayıyı ayarlardan değiştirebilirsin). İyi eğlenceler!\n\nNot: Çok oyunculu oyun desteği hâlâ geliştiriliyor. Herhangi bir sorunla karşılaşırsan lütfen bana bildir. Sorunun hangi adımlarla tekrar ortaya çıktığını anlatman çok yardımcı olur, ama şart değil; bir şeylerin ters gittiğini söylemen de yeterli.\n\nKaynak metin İngilizcedir ve bu çeviriler yapay zekâ tarafından hazırlanmıştır. Düzeltme ve iyileştirme önerileri her zaman memnuniyetle karşılanır!"
 }
