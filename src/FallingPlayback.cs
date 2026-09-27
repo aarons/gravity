@@ -1,11 +1,13 @@
 namespace Gravity;
 
 // Presentation time advances only while the player can see the map.
-internal sealed class FallingPlayback(bool completed)
+internal sealed class FallingPlayback(bool previouslyViewed, int encountersVisited = 0)
 {
     private double _visibleSeconds;
     private double _elapsed;
-    public bool Completed { get; private set; } = completed;
+    // A resumed act is already underway even if this client has no local viewing
+    // record. Restoring it must not gate map input on the introductory animation.
+    public bool Completed { get; private set; } = previouslyViewed || encountersVisited > 0;
     public bool Started => _elapsed > 0;
     public int Frame => Completed ? FallingLayout.Steps
         : Math.Min(FallingLayout.Steps, (int)(_elapsed / FallingLayout.StepSeconds));

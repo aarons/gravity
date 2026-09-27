@@ -107,7 +107,8 @@ internal sealed class GravityMapView
     {
         if (!_opened)
         {
-            _playback = new FallingPlayback(ViewedMaps.HasSectionKey("viewed", _key));
+            _playback = new FallingPlayback(ViewedMaps.HasSectionKey("viewed", _key),
+                GravityRules.Progress(_run).EncountersVisited);
             _opened = true;
         }
         ApplyFrame(_playback!.Frame);

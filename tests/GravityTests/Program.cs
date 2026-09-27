@@ -161,4 +161,14 @@ var seen = new FallingPlayback(true);
 seen.Process(1.0 / 60, false);
 seen.Close(false);
 Check(seen.Completed && seen.Frame == FallingLayout.Steps, "Previously viewed maps must remain settled");
+foreach (var encountersVisited in new[] { 1, 15, 60 })
+{
+    var resumed = new FallingPlayback(false, encountersVisited);
+    Check(resumed.Completed && resumed.Frame == FallingLayout.Steps,
+        "A resumed act must immediately settle without a local viewing record");
+    resumed.Process(1.0 / 60, false);
+    resumed.Close(false);
+    Check(resumed.Completed && resumed.Frame == FallingLayout.Steps,
+        "Reconnect overlays must not leave an established act waiting for animation");
+}
 Console.WriteLine($"Passed {checks} Gravity progression, physics, and playback checks.");
