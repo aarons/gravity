@@ -1,6 +1,6 @@
 {
   "visibility": "public",
-  "changeNote": "1.1.0\n\nAdded early-map support and improved co-op settings and new-player defaults.\n\n- Gravity now works before Neow is unlocked. The opening fight counts toward boss progress.\n- Improved co-op settings sync when starting, loading, or rejoining a run. Settings are remembered across sessions; if sync fails, a warning appears and play continues with locally remembered or current settings.\n- Encounter locking is now on by default for new players: ordinary encounters lock when the boss unlocks. Existing preferences are preserved.\n\n────────────────────\n\n新增早期地图支持，改进联机设置同步和新玩家的默认设置。\n\n- 尚未解锁涅奥时，Gravity 也会生效。开场战斗计入解锁Boss所需的遭遇次数。\n- 改进开局、读档和重连时的联机设置同步，设置会保留至下次游戏。若同步失败，将显示提示，并使用本地记住的设置或当前设置继续游戏。\n- 新玩家默认开启遭遇锁定：Boss解锁后，普通遭遇将被锁定。已有设置保持不变。",
+  "changeNote": "1.1.1\n\nImproved co-op compatibility and map responsiveness.\n\n- Fixed co-op settings sync compatibility with both stable and beta game versions when loading or rejoining a run.\n- Loading or rejoining now opens directly to the settled map. In new acts, you can choose an encounter without waiting for the falling animation to finish.\n- Settings sync warnings now appear at most once per connection and are skipped while another dialog is open.\n\n────────────────────\n\n改进了联机兼容性，让地图操作更流畅。\n\n- 修复了在正式版和测试版游戏中读档或重新加入冒险时的联机设置同步兼容性问题。\n- 读档或重新加入冒险后，地图会直接显示为落定状态。进入新章节时，无需等待下落动画结束即可选择遭遇。\n- 每次连接最多显示一次设置同步提示；若已有其他对话框打开，则不再弹出提示。",
   "tags": [],
   "dependencies": [],
   "contentDescriptors": []
