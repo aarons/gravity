@@ -51,6 +51,26 @@ Tooling tests use temporary fixtures, fake translation sessions, and an in-memor
 Steam adapter. They do not install into the game, call real translation models,
 or upload to Steam.
 
+### Native run-history layout regression
+
+`tests/GravityRunHistoryTests` is a test mod that runs inside Godot and exits the
+game with status 0 on success or 1 on failure. Use a disposable game copy and an
+isolated user directory, as in the [multiplayer test setup](multiplayer-test.md).
+Build it with `dotnet build tests/GravityRunHistoryTests -c Release`, then copy its
+DLL and JSON into that copy's `mods/GravityRunHistoryTests/` directory alongside
+the freshly built Gravity mod. Enable both mods in the isolated profile.
+
+Launch the copy with `--headless --force-steam off --clientId 1` and set
+`GRAVITY_HISTORY_FIXTURE` to an existing three-act `.run` file containing normal
+combats in each act. The fixture is read only; its Steam platform is changed to
+offline in memory. The test opens the native history screen, checks 17, 18, 31,
+and 100 encounters per act, switches back to short and empty histories, and
+reopens the original fixture. It checks page bounds, encounter sizes, floor order,
+and left/right focus links. Look for `HISTORY TEST PASS` in the game log.
+For a rendered screenshot, omit `--headless` and set `GRAVITY_HISTORY_SCREENSHOT`
+to an output PNG path. This does not replace manual tooltip and controller checks.
+
+
 ## Alternate game installations
 
 Use the `Sts2DataDir` MSBuild property to build against another installation's

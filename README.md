@@ -24,6 +24,9 @@ while waiting; closing it or choosing a destination finishes the reveal immediat
 Resuming or rejoining opens directly to the settled pile, even if that player's
 local animation history is missing.
 
+In **Compendium → Run History**, long acts wrap encounters onto additional rows.
+The page scrolls vertically, keeping run details, relics, and deck entries aligned.
+
 ## Settings
 
 Open **Mods → Gravity** to configure new runs. If installed, BaseLib and RitsuLib
