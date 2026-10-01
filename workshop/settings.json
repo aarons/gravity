@@ -1,6 +1,6 @@
 {
   "visibility": "public",
-  "changeNote": "1.1.2\n\nFixed long runs displaying off-screen in Compendium → Run History. Encounters now wrap onto additional rows, with vertical scrolling to view the full run.\n\n────────────────────\n\n修复了图鉴中的冒险历史在流程较长时显示超出屏幕的问题。遭遇记录现在会自动换行，可通过上下滚动查看完整冒险记录。",
+  "changeNote": "1.2.0\n\nAdded a Gravity toggle below the character portraits when starting a new run. Turn it off to use the normal map and travel rules. Your choice is remembered; in co-op, the host chooses for everyone.\n\n────────────────────\n\n开始新冒险时，可通过角色头像下方的 Gravity 开关启用或停用模组。关闭后使用原版地图和行进规则。你的选择会自动保存；联机时由房主为所有玩家选择。",
   "tags": [],
   "dependencies": [],
   "contentDescriptors": []

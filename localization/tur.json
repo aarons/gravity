@@ -1,4 +1,5 @@
 {
+  "run.enabled": "Gravity",
   "mod.loaded": "Mod yüklendi.",
   "map.progress": "{0}/{1}",
   "map.progress.title": "Karşılaşmalar",
@@ -25,6 +26,6 @@
   "settings.encounters_default": "15 karşılaşmadan sonra - Oyunun varsayılanı",
   "settings.encounters_all": "Tüm karşılaşmalardan sonra - Çok uzun bir oyun",
   "settings.encounters_custom": "Belirlediğin sayıda karşılaşmadan sonra",
-  "settings.custom_hint": "Mevcut karşılaşmalardan daha yüksek bir sayı seçmek yeni karşılaşma eklemez, yalnızca hepsini ziyaret etmeni gerektirir.",
+  "settings.custom_hint": "Mevcut karşılaşma sayısından daha yüksek bir sayı seçmek yeni karşılaşma eklemez, yalnızca hepsini ziyaret etmeni gerektirir.",
   "settings.custom_range": "0–999"
 }

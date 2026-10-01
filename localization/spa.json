@@ -1,4 +1,5 @@
 {
+  "run.enabled": "Gravity",
   "mod.loaded": "Mod cargado.",
   "map.progress": "{0}/{1}",
   "map.progress.title": "Encuentros",

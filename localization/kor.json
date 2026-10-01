@@ -1,4 +1,5 @@
 {
+  "run.enabled": "Gravity",
   "mod.loaded": "모드를 불러왔습니다.",
   "map.progress": "{0}/{1}",
   "map.progress.title": "지점",

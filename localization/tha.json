@@ -1,4 +1,5 @@
 {
+  "run.enabled": "Gravity",
   "mod.loaded": "โหลดม็อดแล้ว",
   "map.progress": "{0}/{1}",
   "map.progress.title": "จุดเผชิญหน้า",

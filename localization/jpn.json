@@ -1,4 +1,5 @@
 {
+  "run.enabled": "Gravity",
   "mod.loaded": "Modを読み込みました。",
   "map.progress": "{0}/{1}",
   "map.progress.title": "マス",
