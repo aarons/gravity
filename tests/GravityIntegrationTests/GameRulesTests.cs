@@ -12,9 +12,9 @@ internal static class GameRulesTests
 {
     public static void Run()
     {
-        // These two collections are the only state read by the patched rules. Avoid
-        // initializing content databases or a native Godot scene in this smoke test.
-        var run = (RunState)RuntimeHelpers.GetUninitializedObject(typeof(RunState));
+        // Use a real empty run so the native travel hook can enumerate its listeners
+        // when Gravity is disabled, without creating a Godot scene.
+        var run = SettingsTests.NewState();
         AccessTools.Field(typeof(RunState), "_visitedMapCoords").SetValue(run, new List<MapCoord>());
         var history = new List<List<MapPointHistoryEntry>> { new() };
         AccessTools.Field(typeof(RunState), "_mapPointHistory").SetValue(run, history);
@@ -29,6 +29,15 @@ internal static class GameRulesTests
         run.AddVisitedMapCoord(map.StartingMapPoint.coord);
         history[0].Add(new MapPointHistoryEntry());
         VerifyReveal(run, shouldAnimate: true);
+        GravityRunSettings.Set(run, 15, true, disabled: true);
+        Check(!GravityRules.Applies(run) && !GravityTopBarProgress.Applies(run),
+            "Disabled runs must retain the native map and floor counter");
+        Check(MapTravel.GetTravelablePointsFrom(run, map.StartingMapPoint).ToHashSet()
+            .SetEquals(map.StartingMapPoint.Children), "Disabled runs must follow native paths");
+        GravitySettings.Enabled = false;
+        GravityRunSettings.Set(run, 15, true);
+        Check(GravityRules.Applies(run), "Changing the next-run toggle must not alter an active run");
+        GravitySettings.Enabled = true;
         var choices = MapTravel.GetTravelablePointsFrom(run, map.StartingMapPoint).ToArray();
         Check(choices.Length == 60, "Patched API must expose every encounter");
         Check(GravityTopBarProgress.Text(run) == "0/15", "A new act must start with an empty goal");

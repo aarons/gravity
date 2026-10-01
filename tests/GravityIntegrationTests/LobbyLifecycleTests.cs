@@ -74,6 +74,7 @@ internal static class LobbyLifecycleTests
     {
         foreach (var requirement in new[] { 0, -1, 15, 99 })
         foreach (var locked in new[] { false, true })
+        foreach (var enabled in new[] { false, true })
         {
             var host = new Endpoint(true);
             var client = new Endpoint(false);
@@ -100,12 +101,14 @@ internal static class LobbyLifecycleTests
             var original = new List<ModifierModel> { other };
             GravitySettings.RestoreEncounterPreferences(requirement, true);
             GravitySettings.LockEncountersAfterBossUnlock = locked;
+            GravitySettings.Enabled = enabled;
             Invoke(hostLobby, "BeginRunForAllPlayers", "GRAVITYTEST", original);
             Check(host.Sent[0] is GravityRunSettingsMessage && host.Sent[1] is LobbyBeginRunMessage,
                 "The snapshot must precede the native start on the reliable channel");
             Check(original.Count == 1 && ReferenceEquals(original[0], other), "Host modified another owner's modifier list");
             GravitySettings.RestoreEncounterPreferences(4, true);
             GravitySettings.LockEncountersAfterBossUnlock = !locked;
+            GravitySettings.Enabled = !enabled;
             var otherReceived = 0;
             client.Service.RegisterMessageHandler<OtherSettingsMessage>((m, _) => otherReceived = m.Value);
             client.Deliver(host.Sent[0]);
@@ -115,12 +118,15 @@ internal static class LobbyLifecycleTests
             foreach (var run in new[] { clientRun, hostRun })
             {
                 Check(run != null && GravityRunSettings.Get(run) == requirement
-                    && GravityRunSettings.GetLockEncounters(run) == locked, "The actual lobby hooks lost host settings");
+                    && GravityRunSettings.GetLockEncounters(run) == locked
+                    && GravityRunSettings.GetSnapshot(run).Disabled == !enabled, "The actual lobby hooks lost host settings");
                 Check(run!.Modifiers.Count == 1 && run.Modifiers.OfType<OtherSettingsModifier>().Single().CombatsLeft == 871,
                     "Gravity must preserve other modifiers and add none of its own");
             }
             Check(GravitySettings.NextRunRequirement == 4 && GravitySettings.LockEncountersAfterBossUnlock == !locked,
                 "Host snapshot changed the client's personal defaults");
+            Check(GravitySettings.Enabled == !enabled, "Host must not overwrite the client toggle preference");
+            GravitySettings.Enabled = true;
         }
     }
 

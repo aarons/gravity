@@ -10,13 +10,13 @@ using MegaCrit.Sts2.Core.Saves.Runs;
 
 namespace Gravity;
 
-internal sealed record GravitySettingsSnapshot(int Requirement, bool LockEncounters)
+internal sealed record GravitySettingsSnapshot(int Requirement, bool LockEncounters, bool Disabled = false)
 {
     internal const int Version = 1;
     internal bool IsValid => Requirement is >= -1 and <= 1000;
     internal static GravitySettingsSnapshot Default => new(15, false);
     internal static GravitySettingsSnapshot FromPreferences() =>
-        new(GravitySettings.NextRunRequirement, GravitySettings.LockEncountersAfterBossUnlock);
+        new(GravitySettings.NextRunRequirement, GravitySettings.LockEncountersAfterBossUnlock, !GravitySettings.Enabled);
 }
 
 internal static class GravityRunSettings
@@ -27,6 +27,7 @@ internal static class GravityRunSettings
         internal bool FromNetwork;
         internal int? LegacyRequirement;
         internal bool? LegacyLock;
+        internal bool Disabled;
         internal int? Version;
     }
 
@@ -43,8 +44,8 @@ internal static class GravityRunSettings
     public static int Get(RunState run) => GetSnapshot(run).Requirement;
     public static bool GetLockEncounters(RunState run) => GetSnapshot(run).LockEncounters;
 
-    internal static void Set(RunState run, int requirement, bool locked = false) =>
-        Store(run.ExtraFields, new(requirement, locked));
+    internal static void Set(RunState run, int requirement, bool locked = false, bool disabled = false) =>
+        Store(run.ExtraFields, new(requirement, locked, disabled));
 
     internal static void Store(object fields, GravitySettingsSnapshot snapshot)
     {
@@ -90,7 +91,7 @@ internal static class GravityRunSettings
                 if (version != GravitySettingsSnapshot.Version || data.LegacyRequirement is not int count
                     || count is < -1 or > 1000 || data.LegacyLock is not bool locked)
                     throw new JsonException("Invalid or unsupported Gravity run settings.");
-                Store(save.ExtraFields, new(count, locked));
+                Store(save.ExtraFields, new(count, locked, data.Disabled));
             }
             else if (legacy.Length > 0)
             {
@@ -139,6 +140,13 @@ internal static class GravityRunSettings
         locked.Set = (owner, value) => Fields.GetOrCreateValue(owner).LegacyLock = (bool)value!;
         locked.ShouldSerialize = version.ShouldSerialize;
         info.Properties.Add(locked);
+
+        // An absent flag in existing saves means Gravity remains enabled.
+        var disabled = info.CreateJsonPropertyInfo(typeof(bool), "gravity_disabled");
+        disabled.Get = owner => Fields.GetOrCreateValue(owner).Snapshot?.Disabled ?? false;
+        disabled.Set = (owner, value) => Fields.GetOrCreateValue(owner).Disabled = (bool)value!;
+        disabled.ShouldSerialize = version.ShouldSerialize;
+        info.Properties.Add(disabled);
     }
 }
 

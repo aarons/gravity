@@ -5,6 +5,7 @@ namespace Gravity;
 internal static class GravitySettings
 {
     private const string Path = "user://gravity.cfg";
+    public static bool Enabled { get; set; } = true;
     public const int DefaultHue = 43;
     public const int DefaultPulsePercent = 25;
     public static int Hue { get; set; } = DefaultHue;
@@ -68,6 +69,8 @@ internal static class GravitySettings
             return value.VariantType == Variant.Type.Int && value.AsInt64() >= min && value.AsInt64() <= max
                 ? value.AsInt32() : fallback;
         }
+        var gravityEnabled = config.GetValue("settings", "gravity_enabled", true);
+        Enabled = gravityEnabled.VariantType != Variant.Type.Bool || gravityEnabled.AsBool();
         Hue = ReadInt("hue", DefaultHue, 0, 360);
         PulsePercent = ReadInt("pulse_percent", DefaultPulsePercent, 0, 100);
         // Existing configs from before this option retain unrestricted exploration.
@@ -83,6 +86,7 @@ internal static class GravitySettings
     public static Error Save()
     {
         using var config = new ConfigFile();
+        config.SetValue("settings", "gravity_enabled", Enabled);
         config.SetValue("settings", "hue", Hue);
         config.SetValue("settings", "pulse_percent", PulsePercent);
         config.SetValue("settings", "encounters", NextRunRequirement);

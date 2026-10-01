@@ -20,6 +20,7 @@ public struct GravityRunSettingsMessage : INetMessage
 {
     internal int Requirement;
     internal bool LockEncounters;
+    internal bool Disabled;
 
     public bool ShouldBroadcast => false;
     public NetTransferMode Mode => NetTransferMode.Reliable;
@@ -30,12 +31,14 @@ public struct GravityRunSettingsMessage : INetMessage
     {
         writer.WriteInt(Requirement);
         writer.WriteBool(LockEncounters);
+        writer.WriteBool(Disabled);
     }
 
     public void Deserialize(PacketReader reader)
     {
         Requirement = reader.ReadInt();
         LockEncounters = reader.ReadBool();
+        Disabled = reader.ReadBool();
     }
 }
 
@@ -68,7 +71,7 @@ internal sealed class GravitySettingsSync
     private void Receive(GravityRunSettingsMessage message, ulong senderId)
     {
         if (service is not INetClientGameService client || client.NetClient?.HostNetId != senderId) return;
-        pending = new(message.Requirement, message.LockEncounters);
+        pending = new(message.Requirement, message.LockEncounters, message.Disabled);
     }
 
     internal void Send(GravitySettingsSnapshot snapshot, ulong? peer = null)
@@ -76,7 +79,7 @@ internal sealed class GravitySettingsSync
         if (service.Type != NetGameType.Host) throw new InvalidOperationException("Only the host can send Gravity settings.");
         var message = new GravityRunSettingsMessage
         {
-            Requirement = snapshot.Requirement, LockEncounters = snapshot.LockEncounters,
+            Requirement = snapshot.Requirement, LockEncounters = snapshot.LockEncounters, Disabled = snapshot.Disabled,
         };
         if (peer is ulong id) service.SendMessage(message, id);
         else service.SendMessage(message);

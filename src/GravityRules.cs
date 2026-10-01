@@ -15,7 +15,8 @@ internal static class GravityRules
     }
 
     // Leave small special-purpose maps, such as single-room debug maps, unchanged.
-    public static bool Applies(IRunState? run) => run is RunState
+    public static bool Applies(IRunState? run) => run is RunState state
+        && !GravityRunSettings.GetSnapshot(state).Disabled
         && Encounters(run.Map).Take(15).Count() == 15;
 
     public static IEnumerable<MapPoint> Encounters(ActMap map) => map.GetAllMapPoints()

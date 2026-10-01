@@ -100,12 +100,13 @@ internal static class SettingsTests
         VerifyVersionMatching();
         foreach (var requirement in new[] { -1, 0, 1, 15, 99, 999, 1000 })
         foreach (var locked in new[] { false, true })
+        foreach (var disabled in new[] { false, true })
         {
             var other = (OtherSettingsModifier)ModelDb.Modifier<OtherSettingsModifier>().ToMutable();
             other.CombatsLeft = 871;
             other.IsUsed = true;
             var state = NewState([other]);
-            GravityRunSettings.Set(state, requirement, locked);
+            GravityRunSettings.Set(state, requirement, locked, disabled);
             GravitySettings.RestoreEncounterPreferences(4, true);
             GravitySettings.LockEncountersAfterBossUnlock = !locked;
             var snapshot = GravityRunSettings.GetSnapshot(state);
