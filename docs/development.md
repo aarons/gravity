@@ -17,7 +17,8 @@ against the installed game assemblies. It does not open or change a run. Its
 multiplayer fixtures use stand-ins for sockets and scenes; offline checks do not
 replace in-game testing of UI, full runs, or live co-op.
 Settings tests include standard and custom Sealed Deck runs with Gravity both on
-and off, disk save/load, multiplayer startup, saved-lobby joins, live-rejoin
+and off, disk save/load (including rewriting a loaded save before restoring the
+run), multiplayer startup, saved-lobby joins, live-rejoin
 messages, and the client's remembered settings when a reconnect snapshot is missing.
 The optional `--map-only` run isolates travel, history, and reveal eligibility from
 the settings and network patches, including resumed acts and fresh later acts.
@@ -73,6 +74,30 @@ and left/right focus links. Look for `HISTORY TEST PASS` in the game log.
 For a rendered screenshot, omit `--headless` and set `GRAVITY_HISTORY_SCREENSHOT`
 to an output PNG path. This does not replace manual tooltip and controller checks.
 
+
+### Native run-setup regression
+
+`tests/GravityRunSetupTests` is a Godot test mod for the custom-run screen and
+disabled-run persistence. Build with:
+
+```sh
+dotnet build tests/GravityRunSetupTests -c Release
+```
+
+Install its DLL and JSON alongside the freshly built Gravity DLL
+in a disposable game copy with an isolated user directory. Enable both mods in
+that profile. This test starts and saves a custom run; never use a normal profile.
+
+Launch with `--headless --force-steam off --clientId 1`. The test checks native
+setup controls, toggle placement and focus links, reopening, and the scrolling
+portrait layout used by BaseLib when extra characters are installed. It then
+starts with Gravity disabled and verifies a native disk save, a save rewrite,
+and restoration with the opposite personal preference. Look for
+`RUN SETUP TEST PASS` and exit status 0. Relaunch the same isolated profile with
+`GRAVITY_SETUP_RESUME=1` to check that the disabled choice survives a full process
+restart. Omit `--headless` and set `GRAVITY_SETUP_SCREENSHOT` to
+an output PNG path for a rendered setup screenshot. This does not replace live
+co-op or manual controller testing.
 
 ## Alternate game installations
 

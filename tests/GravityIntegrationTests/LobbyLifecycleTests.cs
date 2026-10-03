@@ -195,9 +195,11 @@ internal static class LobbyLifecycleTests
             GravityRunSettings.Set(run, 27, true, disabled);
             // Reload the host from disk before either reconnect path; JSON and
             // native network serialization carry settings through different hooks.
-            run = RunState.FromSerializable(JsonSerializer.Deserialize<SerializableRun>(
+            var disk = JsonSerializer.Deserialize<SerializableRun>(
                 JsonSerializer.Serialize(SettingsTests.Save(run), JsonSerializationUtility.Options),
-                JsonSerializationUtility.Options)!);
+                JsonSerializationUtility.Options)!;
+            disk = JsonSerializer.Deserialize<SerializableRun>(JsonSerializationUtility.ToJson(disk), JsonSerializationUtility.Options)!;
+            run = RunState.FromSerializable(disk);
             var player = (MegaCrit.Sts2.Core.Entities.Players.Player)RuntimeHelpers.GetUninitializedObject(typeof(MegaCrit.Sts2.Core.Entities.Players.Player));
             AccessTools.Field(player.GetType(), "<NetId>k__BackingField").SetValue(player, 2UL);
             AccessTools.Field(typeof(RunState), "_players").SetValue(run, new List<MegaCrit.Sts2.Core.Entities.Players.Player> { player });

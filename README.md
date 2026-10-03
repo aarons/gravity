@@ -36,6 +36,7 @@ the normal map and travel rules. In co-op, the host chooses for everyone.
 Saves from before the toggle was added keep Gravity enabled.
 Custom runs use the same switch, including runs with Sealed Deck. The choice stays
 with the run when saving, loading, or reconnecting; no Gravity modifier is needed.
+The custom-run switch also supports scrolling character lists added by BaseLib.
 
 Open **Mods → Gravity** to configure new runs. If installed, BaseLib and RitsuLib
 also provide access through their mod-settings panels.

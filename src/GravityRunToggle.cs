@@ -16,12 +16,21 @@ internal static class GravityRunToggle
         new[] { typeof(NCharacterSelectScreen), typeof(NCustomRunScreen) }
             .Select(type => AccessTools.DeclaredMethod(type, name));
 
-    internal static void Refresh(Control screen)
+    internal static void Refresh(Control screen, Control portraits)
+    {
+        try { RefreshToggle(screen, portraits); }
+        catch (Exception error)
+        {
+            // NSubmenuStack shows the screen only after OnSubmenuOpened returns.
+            // An optional control must never leave the entire setup screen hidden.
+            Console.WriteLine($"[Gravity] Could not refresh run toggle: {error}");
+        }
+    }
+
+    private static void RefreshToggle(Control screen, Control portraits)
     {
         var custom = screen is NCustomRunScreen;
         var lobby = custom ? ((NCustomRunScreen)screen).Lobby : ((NCharacterSelectScreen)screen).Lobby;
-        var portraits = screen.GetNode<Control>(custom
-            ? "LeftContainer/CharSelectButtons/ButtonContainer" : "CharSelectButtons/ButtonContainer");
         var toggle = screen.GetNodeOrNull<CheckButton>("GravityRunToggle");
         if (toggle == null)
         {
@@ -41,15 +50,22 @@ internal static class GravityRunToggle
             {
                 if (!GodotObject.IsInstanceValid(screen) || !GodotObject.IsInstanceValid(portraits)
                     || !GodotObject.IsInstanceValid(toggle)) return;
+                // BaseLib reparents the buttons into a scrolling viewport when
+                // mod characters are present. Keep the switch outside that clip
+                // area and stationary as the portraits scroll horizontally.
+                var bounds = portraits;
+                for (var parent = portraits.GetParent(); parent != screen && parent != null; parent = parent.GetParent())
+                    if (parent is Control { ClipContents: true } clip) { bounds = clip; break; }
                 var toScreen = screen.GetGlobalTransform().AffineInverse();
                 var bottom = float.NegativeInfinity;
-                foreach (var portrait in portraits.GetChildren().OfType<Control>().Where(child => child.Visible))
-                    bottom = Mathf.Max(bottom, (toScreen * portrait.GetGlobalTransform() * portrait.Size).Y);
+                if (bounds == portraits)
+                    foreach (var portrait in portraits.GetChildren().OfType<Control>().Where(child => child.Visible))
+                        bottom = Mathf.Max(bottom, (toScreen * portrait.GetGlobalTransform() * portrait.Size).Y);
                 if (float.IsNegativeInfinity(bottom))
-                    bottom = (toScreen * portraits.GetGlobalTransform() * portraits.Size).Y;
+                    bottom = (toScreen * bounds.GetGlobalTransform() * bounds.Size).Y;
                 if (custom)
                 {
-                    toggle.OffsetLeft = (toScreen * portraits.GetGlobalTransform() * Vector2.Zero).X;
+                    toggle.OffsetLeft = (toScreen * bounds.GetGlobalTransform() * Vector2.Zero).X;
                     toggle.OffsetRight = toggle.OffsetLeft + toggle.GetCombinedMinimumSize().X;
                 }
                 toggle.OffsetTop = bottom + 3;
@@ -141,7 +157,9 @@ internal static class GravityRunToggle
 internal static class ShowGravityRunTogglePatch
 {
     private static IEnumerable<MethodBase> TargetMethods() => GravityRunToggle.ScreenMethods("OnSubmenuOpened");
-    private static void Postfix(Control __instance) => GravityRunToggle.Refresh(__instance);
+    // Both screens retain this reference even when another mod reparents it.
+    private static void Postfix(Control __instance, Control ____charButtonContainer) =>
+        GravityRunToggle.Refresh(__instance, ____charButtonContainer);
 }
 
 [HarmonyPatch]
@@ -159,5 +177,6 @@ internal static class LockGravityRunTogglePatch
 internal static class UnlockGravityRunTogglePatch
 {
     private static IEnumerable<MethodBase> TargetMethods() => GravityRunToggle.ScreenMethods("OnUnreadyPressed");
-    private static void Postfix(Control __instance) => GravityRunToggle.Refresh(__instance);
+    private static void Postfix(Control __instance, Control ____charButtonContainer) =>
+        GravityRunToggle.Refresh(__instance, ____charButtonContainer);
 }

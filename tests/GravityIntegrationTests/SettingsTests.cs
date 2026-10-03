@@ -116,6 +116,10 @@ internal static class SettingsTests
             var json = JsonSerializer.Serialize(saved, JsonSerializationUtility.Options);
             Check(json.Contains("\"gravity_version\"") && !json.Contains("GRAVITY_SETTINGS_MODIFIER"), "Settings must use dedicated JSON data");
             var loaded = JsonSerializer.Deserialize<SerializableRun>(json, JsonSerializationUtility.Options)!;
+            // Rewriting save metadata must not require constructing a RunState first.
+            loaded.NumReloads++;
+            loaded = JsonSerializer.Deserialize<SerializableRun>(
+                JsonSerializationUtility.ToJson(loaded), JsonSerializationUtility.Options)!;
             var restored = RunState.FromSerializable(loaded);
             Check(GravityRunSettings.GetSnapshot(restored) == snapshot, "Disk load changed run settings");
             var otherRestored = restored.Modifiers.OfType<OtherSettingsModifier>().Single();
@@ -152,6 +156,7 @@ internal static class SettingsTests
         {
             var save = Save(NewState());
             save.ExtraFields = JsonSerializer.Deserialize<SerializableExtraRunFields>(json, JsonSerializationUtility.Options)!;
+            save = JsonSerializer.Deserialize<SerializableRun>(JsonSerializationUtility.ToJson(save), JsonSerializationUtility.Options)!;
             Check(GravityRunSettings.GetSnapshot(RunState.FromSerializable(save)) == expected, "Legacy JSON migration failed");
         }
         foreach (var locked in new[] { false, true })
@@ -192,6 +197,7 @@ internal static class SettingsTests
         {
             var invalid = Save(NewState());
             invalid.ExtraFields = JsonSerializer.Deserialize<SerializableExtraRunFields>(payload, JsonSerializationUtility.Options)!;
+            invalid = JsonSerializer.Deserialize<SerializableRun>(JsonSerializationUtility.ToJson(invalid), JsonSerializationUtility.Options)!;
             Throws<JsonException>(() => RunState.FromSerializable(invalid), "Invalid or future save settings must fail explicitly");
         }
     }

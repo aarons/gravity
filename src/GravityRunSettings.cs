@@ -124,26 +124,41 @@ internal static class GravityRunSettings
         // Use the game's existing primitive JSON metadata; no replacement
         // serializer, model registration, or extension of binary save packets.
         var version = info.CreateJsonPropertyInfo(typeof(int), "gravity_version");
-        version.Get = _ => GravitySettingsSnapshot.Version;
+        version.Get = owner => Fields.GetOrCreateValue(owner).Version ?? GravitySettingsSnapshot.Version;
         version.Set = (owner, value) => Fields.GetOrCreateValue(owner).Version = (int)value!;
-        version.ShouldSerialize = (owner, _) => Fields.GetOrCreateValue(owner).Snapshot != null;
+        version.ShouldSerialize = (owner, _) => Fields.GetOrCreateValue(owner) is { Snapshot: not null } or { Version: not null };
         info.Properties.Add(version);
 
         var count = info.CreateJsonPropertyInfo(typeof(int), "gravity_encounters");
-        count.Get = owner => Fields.GetOrCreateValue(owner).Snapshot?.Requirement ?? 15;
+        // A deserialized SerializableRun can be re-saved or cloned before
+        // ReadSave constructs its snapshot. Retain the original fields then,
+        // including missing/invalid fields for the existing validation to catch.
+        count.Get = owner =>
+        {
+            var data = Fields.GetOrCreateValue(owner);
+            return data.Snapshot?.Requirement ?? data.LegacyRequirement ?? 15;
+        };
         count.Set = (owner, value) => Fields.GetOrCreateValue(owner).LegacyRequirement = (int)value!;
-        count.ShouldSerialize = version.ShouldSerialize;
+        count.ShouldSerialize = (owner, _) => Fields.GetOrCreateValue(owner) is { Snapshot: not null } or { LegacyRequirement: not null };
         info.Properties.Add(count);
 
         var locked = info.CreateJsonPropertyInfo(typeof(bool), "gravity_lock_encounters");
-        locked.Get = owner => Fields.GetOrCreateValue(owner).Snapshot?.LockEncounters ?? false;
+        locked.Get = owner =>
+        {
+            var data = Fields.GetOrCreateValue(owner);
+            return data.Snapshot?.LockEncounters ?? data.LegacyLock ?? false;
+        };
         locked.Set = (owner, value) => Fields.GetOrCreateValue(owner).LegacyLock = (bool)value!;
-        locked.ShouldSerialize = version.ShouldSerialize;
+        locked.ShouldSerialize = (owner, _) => Fields.GetOrCreateValue(owner) is { Snapshot: not null } or { LegacyLock: not null };
         info.Properties.Add(locked);
 
         // An absent flag in existing saves means Gravity remains enabled.
         var disabled = info.CreateJsonPropertyInfo(typeof(bool), "gravity_disabled");
-        disabled.Get = owner => Fields.GetOrCreateValue(owner).Snapshot?.Disabled ?? false;
+        disabled.Get = owner =>
+        {
+            var data = Fields.GetOrCreateValue(owner);
+            return data.Snapshot?.Disabled ?? data.Disabled;
+        };
         disabled.Set = (owner, value) => Fields.GetOrCreateValue(owner).Disabled = (bool)value!;
         disabled.ShouldSerialize = version.ShouldSerialize;
         info.Properties.Add(disabled);
