@@ -1,6 +1,6 @@
 {
   "visibility": "public",
-  "changeNote": "1.2.1\n\nAdded the Gravity toggle to custom-run setup, below the character portraits. Turn it off to use the normal map and travel rules.\n\n────────────────────\n\n自定义模式设置界面的角色头像下方新增 Gravity 开关。关闭后使用原版地图和行进规则。",
+  "changeNote": "1.2.2\n\nFixed Gravity turning back on when resuming a saved run. Runs started with Gravity off now keep it off when resumed.\n\n────────────────────\n\n修复了继续存档时 Gravity 意外重新启用的问题。开始冒险时关闭 Gravity，继续存档后也会保持关闭。",
   "tags": [],
   "dependencies": [],
   "contentDescriptors": []

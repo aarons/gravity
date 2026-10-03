@@ -122,17 +122,29 @@ between branches. The headless fixtures also resolve model initialization and RN
 construction at runtime and avoid native client-service constructors; these test
 setup APIs differ even where Gravity's gameplay APIs remain compatible.
 
-Verified September 27, 2026 with stable Steam build **23811903** and public-beta
-build **24724944**: both Release builds completed with zero warnings, and the full
-offline integration suite passed in all four combinations:
+Verified October 3, 2026 at commit `8836f55` with the preserved stable v0.107.1
+snapshot (Steam build **23811903**) and installed public-beta v0.111.0
+(build **24724944**). All 430 stable snapshot files matched their recorded SHA-256
+checksums. Both Release builds completed with zero warnings, and the full offline
+integration suite passed in all four combinations:
 
 | Built against | Run against stable | Run against beta |
 | --- | --- | --- |
 | Stable | Passed | Passed |
 | Beta | Passed | Passed |
 
+Persistence checks covered 56 combinations of standard/custom Sealed Deck runs,
+encounter requirements, locking, and Gravity enabled/disabled, including a save
+rewrite before restoring the run, preference isolation, and legacy migration.
+The beta-built mod and native run-setup test also passed inside a disposable
+stable game copy: custom-screen controls, scrolling portraits, disabled startup,
+native disk save/load, save rewriting, and restoration after a full process
+restart with the opposite personal preference. The pure suite passed 24,982
+progression, physics, and playback checks.
+
 Stable skips the beta-only co-op version-comparison check because it uses the
-older handshake API. These results do not replace live co-op or full-run testing.
+older handshake API. This validates the recorded snapshot, not the latest Steam
+public branch. Live co-op and full-run testing were not performed in this pass.
 
 If the game reports that Gravity failed to initialize, inspect the exception in
 `SlayTheSpire2/logs/godot.log`. The generic assembly error does not identify the cause.
