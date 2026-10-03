@@ -7,6 +7,7 @@ using HarmonyLib;
 using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Logging;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Models.Modifiers;
 using MegaCrit.Sts2.Core.Multiplayer;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
@@ -65,6 +66,7 @@ internal static class LobbyLifecycleTests
             fixture.UnpatchAll(fixture.Id);
             GravitySettings.RestoreEncounterPreferences(15, true);
             GravitySettings.LockEncountersAfterBossUnlock = false;
+            GravitySettings.Enabled = true;
             File.Delete(cachePath);
         }
         Console.WriteLine("Passed native start/load/rejoin transfer, once-per-connection warning attempts, remembered settings across sessions, preference isolation, disconnect cleanup, and another mod's messages.");
@@ -72,6 +74,7 @@ internal static class LobbyLifecycleTests
 
     private static void NewRuns()
     {
+        foreach (var mode in new[] { GameMode.Standard, GameMode.Custom })
         foreach (var requirement in new[] { 0, -1, 15, 99 })
         foreach (var locked in new[] { false, true })
         foreach (var enabled in new[] { false, true })
@@ -92,20 +95,22 @@ internal static class LobbyLifecycleTests
                 if (method.Name == "BeginRun") hostRun = Start(hostLobby!, (IReadOnlyList<ModifierModel>)args![2]!);
                 return null;
             });
-            clientLobby = Lobby(client.Service, clientListener);
-            hostLobby = Lobby(host.Service, hostListener);
+            clientLobby = Lobby(client.Service, clientListener, mode);
+            hostLobby = Lobby(host.Service, hostListener, mode);
             hostLobby.Act1 = "overgrowth";
             var other = (OtherSettingsModifier)ModelDb.Modifier<OtherSettingsModifier>().ToMutable();
             other.CombatsLeft = 871;
             other.IsUsed = true;
             var original = new List<ModifierModel> { other };
+            if (mode == GameMode.Custom) original.Add(ModelDb.Modifier<SealedDeck>().ToMutable());
             GravitySettings.RestoreEncounterPreferences(requirement, true);
             GravitySettings.LockEncountersAfterBossUnlock = locked;
             GravitySettings.Enabled = enabled;
             Invoke(hostLobby, "BeginRunForAllPlayers", "GRAVITYTEST", original);
             Check(host.Sent[0] is GravityRunSettingsMessage && host.Sent[1] is LobbyBeginRunMessage,
                 "The snapshot must precede the native start on the reliable channel");
-            Check(original.Count == 1 && ReferenceEquals(original[0], other), "Host modified another owner's modifier list");
+            Check(original.Count == (mode == GameMode.Custom ? 2 : 1) && ReferenceEquals(original[0], other),
+                "Host modified another owner's modifier list");
             GravitySettings.RestoreEncounterPreferences(4, true);
             GravitySettings.LockEncountersAfterBossUnlock = !locked;
             GravitySettings.Enabled = !enabled;
@@ -120,7 +125,9 @@ internal static class LobbyLifecycleTests
                 Check(run != null && GravityRunSettings.Get(run) == requirement
                     && GravityRunSettings.GetLockEncounters(run) == locked
                     && GravityRunSettings.GetSnapshot(run).Disabled == !enabled, "The actual lobby hooks lost host settings");
-                Check(run!.Modifiers.Count == 1 && run.Modifiers.OfType<OtherSettingsModifier>().Single().CombatsLeft == 871,
+                Check(run!.GameMode == mode && run.Modifiers.Count == original.Count
+                    && (mode != GameMode.Custom || run.Modifiers.OfType<SealedDeck>().Count() == 1)
+                    && run.Modifiers.OfType<OtherSettingsModifier>().Single().CombatsLeft == 871,
                     "Gravity must preserve other modifiers and add none of its own");
             }
             Check(GravitySettings.NextRunRequirement == 4 && GravitySettings.LockEncountersAfterBossUnlock == !locked,
@@ -130,7 +137,8 @@ internal static class LobbyLifecycleTests
         }
     }
 
-    private static StartRunLobby Lobby(INetGameService service, IStartRunLobbyListener listener)
+    private static StartRunLobby Lobby(INetGameService service, IStartRunLobbyListener listener,
+        GameMode mode = GameMode.Standard)
     {
         // Native constructors initialize Godot's Logger/OS and cursor state.
         var lobby = (StartRunLobby)RuntimeHelpers.GetUninitializedObject(typeof(StartRunLobby));
@@ -138,7 +146,7 @@ internal static class LobbyLifecycleTests
         AccessTools.Field(typeof(StartRunLobby), "<LobbyListener>k__BackingField").SetValue(lobby, listener);
         var players = AccessTools.Field(typeof(StartRunLobby), "<Players>k__BackingField");
         players.SetValue(lobby, Activator.CreateInstance(players.FieldType));
-        AccessTools.Field(typeof(StartRunLobby), "<GameMode>k__BackingField").SetValue(lobby, GameMode.Standard);
+        AccessTools.Field(typeof(StartRunLobby), "<GameMode>k__BackingField").SetValue(lobby, mode);
         AccessTools.Method(typeof(RegisterGravitySettingsReceiverPatch), "Postfix").Invoke(null, [lobby]);
         service.RegisterMessageHandler<LobbyBeginRunMessage>((message, sender) =>
             Invoke(lobby, "HandleLobbyBeginRunMessage", message, sender));
@@ -166,7 +174,7 @@ internal static class LobbyLifecycleTests
 
     private static RunState Start(StartRunLobby lobby, IReadOnlyList<ModifierModel> modifiers)
     {
-        var state = SettingsTests.NewState(modifiers);
+        var state = SettingsTests.NewState(modifiers, lobby.GameMode);
         var manager = (RunManager)RuntimeHelpers.GetUninitializedObject(typeof(RunManager));
         manager.SetUpNewMultiplayer(state, lobby, false);
         return state;
@@ -174,22 +182,32 @@ internal static class LobbyLifecycleTests
 
     private static void SavedRuns()
     {
+        foreach (var mode in new[] { GameMode.Standard, GameMode.Custom })
+        foreach (var disabled in new[] { false, true })
         foreach (var rejoin in new[] { false, true })
         {
             var host = new Endpoint(true);
             var client = new Endpoint(false); // A fresh client has no earlier snapshot.
             var join = Join(client.Service);
-            var run = SettingsTests.NewState();
-            GravityRunSettings.Set(run, 27, true);
+            var modifiers = mode == GameMode.Custom
+                ? new[] { ModelDb.Modifier<SealedDeck>().ToMutable() } : Array.Empty<ModifierModel>();
+            var run = SettingsTests.NewState(modifiers, mode);
+            GravityRunSettings.Set(run, 27, true, disabled);
+            // Reload the host from disk before either reconnect path; JSON and
+            // native network serialization carry settings through different hooks.
+            run = RunState.FromSerializable(JsonSerializer.Deserialize<SerializableRun>(
+                JsonSerializer.Serialize(SettingsTests.Save(run), JsonSerializationUtility.Options),
+                JsonSerializationUtility.Options)!);
             var player = (MegaCrit.Sts2.Core.Entities.Players.Player)RuntimeHelpers.GetUninitializedObject(typeof(MegaCrit.Sts2.Core.Entities.Players.Player));
             AccessTools.Field(player.GetType(), "<NetId>k__BackingField").SetValue(player, 2UL);
             AccessTools.Field(typeof(RunState), "_players").SetValue(run, new List<MegaCrit.Sts2.Core.Entities.Players.Player> { player });
             // The minimal fixture save has no scene-backed player inventory.
-            var save = SettingsTests.Save(SettingsTests.NewState());
+            var save = SettingsTests.Save(SettingsTests.NewState(modifiers, mode));
             GravityRunSettings.Store(save.ExtraFields, GravityRunSettings.GetSnapshot(run));
             save.Players = [new SerializablePlayer { NetId = 2UL }];
             GravitySettings.RestoreEncounterPreferences(2, true);
             GravitySettings.LockEncountersAfterBossUnlock = false;
+            GravitySettings.Enabled = disabled;
             if (!rejoin)
             {
                 var lobby = (LoadRunLobby)RuntimeHelpers.GetUninitializedObject(typeof(LoadRunLobby));
@@ -223,11 +241,15 @@ internal static class LobbyLifecycleTests
                 Check(completion.Task.IsCompletedSuccessfully, "Native rejoin flow did not accept the snapshot");
             }
             var restored = RunState.FromSerializable(wireSave);
-            Check(GravityRunSettings.Get(restored) == 27 && GravityRunSettings.GetLockEncounters(restored),
+            Check(GravityRunSettings.GetSnapshot(restored) == new GravitySettingsSnapshot(27, true, disabled)
+                && restored.GameMode == mode
+                && restored.Modifiers.Count == modifiers.Length,
                 "Joining must restore the run snapshot, not the host's current defaults");
-            Check(GravitySettings.NextRunRequirement == 2 && !GravitySettings.LockEncountersAfterBossUnlock,
+            Check(GravitySettings.NextRunRequirement == 2 && !GravitySettings.LockEncountersAfterBossUnlock
+                && GravitySettings.Enabled == disabled,
                 "Joining changed personal defaults");
         }
+        GravitySettings.Enabled = true;
     }
 
     private static SerializableRun RoundTripSave(SerializableRun save)
@@ -319,11 +341,12 @@ internal static class LobbyLifecycleTests
 
     private static void ResumingFallback()
     {
+        foreach (var disabled in new[] { false, true })
         foreach (var rejoin in new[] { false, true })
         {
             var original = new Endpoint(false);
             var sync = GravitySettingsSync.For(original.Service);
-            original.Deliver(new GravityRunSettingsMessage { Requirement = 27, LockEncounters = true });
+            original.Deliver(new GravityRunSettingsMessage { Requirement = 27, LockEncounters = true, Disabled = disabled });
             sync.Take("GRAVITYTEST");
             original.RaiseDisconnected();
             GravitySettings.RestoreEncounterPreferences(4, true);
@@ -336,7 +359,7 @@ internal static class LobbyLifecycleTests
             var join = Join(client.Service);
             var save = RoundTripSave(SettingsTests.Save(SettingsTests.NewState()));
             var run = CompleteJoin(join, save, rejoin);
-            Check(GravityRunSettings.GetSnapshot(run) == new GravitySettingsSnapshot(27, true)
+            Check(GravityRunSettings.GetSnapshot(run) == new GravitySettingsSnapshot(27, true, disabled)
                 && warnings == 1 && !client.Disconnected, "Resume must prefer the remembered snapshot to new defaults");
 
             client.Deliver(new GravityRunSettingsMessage { Requirement = 99 });

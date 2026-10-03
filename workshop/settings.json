@@ -1,6 +1,6 @@
 {
   "visibility": "public",
-  "changeNote": "1.2.0\n\nAdded a Gravity toggle below the character portraits when starting a new run. Turn it off to use the normal map and travel rules. Your choice is remembered; in co-op, the host chooses for everyone.\n\n────────────────────\n\n开始新冒险时，可通过角色头像下方的 Gravity 开关启用或停用模组。关闭后使用原版地图和行进规则。你的选择会自动保存；联机时由房主为所有玩家选择。",
+  "changeNote": "1.2.1\n\nAdded the Gravity toggle to custom-run setup, below the character portraits. Turn it off to use the normal map and travel rules. Your choice is remembered; in co-op, the host chooses for everyone.\n\n────────────────────\n\n自定义模式设置界面的角色头像下方新增 Gravity 开关。关闭后使用原版地图和行进规则。你的选择会自动保存；联机时由房主为所有玩家选择。",
   "tags": [],
   "dependencies": [],
   "contentDescriptors": []

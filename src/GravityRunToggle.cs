@@ -1,17 +1,27 @@
+using System.Reflection;
 using Godot;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Nodes.Screens.CharacterSelect;
+using MegaCrit.Sts2.Core.Nodes.Screens.CustomRun;
 using static Gravity.MainFile;
 
 namespace Gravity;
 
-// The character screen is reused between lobbies; refresh from preferences each
+// The setup screens are reused between lobbies; refresh from preferences each
 // time it opens. Clients leave the choice to the host, like ascension.
 internal static class GravityRunToggle
 {
-    internal static void Refresh(NCharacterSelectScreen screen)
+    internal static IEnumerable<MethodBase> ScreenMethods(string name) =>
+        new[] { typeof(NCharacterSelectScreen), typeof(NCustomRunScreen) }
+            .Select(type => AccessTools.DeclaredMethod(type, name));
+
+    internal static void Refresh(Control screen)
     {
+        var custom = screen is NCustomRunScreen;
+        var lobby = custom ? ((NCustomRunScreen)screen).Lobby : ((NCharacterSelectScreen)screen).Lobby;
+        var portraits = screen.GetNode<Control>(custom
+            ? "LeftContainer/CharSelectButtons/ButtonContainer" : "CharSelectButtons/ButtonContainer");
         var toggle = screen.GetNodeOrNull<CheckButton>("GravityRunToggle");
         if (toggle == null)
         {
@@ -21,21 +31,27 @@ internal static class GravityRunToggle
                 Text = Localize("run.enabled"),
                 Theme = GravitySettingsPopup.CreateTheme(),
                 CustomMinimumSize = new Vector2(180, 48),
-                AnchorLeft = 1, AnchorRight = 1,
+                AnchorLeft = custom ? 0 : 1, AnchorRight = custom ? 0 : 1,
                 GrowHorizontal = Control.GrowDirection.Begin,
                 OffsetLeft = -244, OffsetRight = -64,
             };
             StyleToggle(toggle);
             screen.AddChild(toggle);
-            var portraits = screen.GetNode<Control>("CharSelectButtons/ButtonContainer");
             void PositionBelowPortraits()
             {
+                if (!GodotObject.IsInstanceValid(screen) || !GodotObject.IsInstanceValid(portraits)
+                    || !GodotObject.IsInstanceValid(toggle)) return;
                 var toScreen = screen.GetGlobalTransform().AffineInverse();
                 var bottom = float.NegativeInfinity;
                 foreach (var portrait in portraits.GetChildren().OfType<Control>().Where(child => child.Visible))
                     bottom = Mathf.Max(bottom, (toScreen * portrait.GetGlobalTransform() * portrait.Size).Y);
                 if (float.IsNegativeInfinity(bottom))
                     bottom = (toScreen * portraits.GetGlobalTransform() * portraits.Size).Y;
+                if (custom)
+                {
+                    toggle.OffsetLeft = (toScreen * portraits.GetGlobalTransform() * Vector2.Zero).X;
+                    toggle.OffsetRight = toggle.OffsetLeft + toggle.GetCombinedMinimumSize().X;
+                }
                 toggle.OffsetTop = bottom + 3;
                 toggle.OffsetBottom = toggle.OffsetTop + toggle.GetCombinedMinimumSize().Y;
             }
@@ -54,12 +70,12 @@ internal static class GravityRunToggle
                 GravitySettings.Save();
             };
         }
-        var client = screen.Lobby.NetService.Type == NetGameType.Client;
+        var client = lobby.NetService.Type == NetGameType.Client;
         toggle.Visible = !client;
         toggle.Disabled = false;
         toggle.SetPressedNoSignal(GravitySettings.Enabled);
-        var characters = screen.GetNode<Control>("CharSelectButtons/ButtonContainer")
-            .GetChildren().OfType<NCharacterSelectButton>().Where(button => button.Visible && !button.IsLocked).ToArray();
+        var characters = portraits.GetChildren().OfType<NCharacterSelectButton>()
+            .Where(button => button.Visible && !button.IsLocked).ToArray();
         foreach (var character in characters)
             character.FocusNeighborBottom = character.GetPathTo(client ? character : toggle);
         if (!client && characters.Length > 0)
@@ -121,24 +137,27 @@ internal static class GravityRunToggle
     }
 }
 
-[HarmonyPatch(typeof(NCharacterSelectScreen), nameof(NCharacterSelectScreen.OnSubmenuOpened))]
+[HarmonyPatch]
 internal static class ShowGravityRunTogglePatch
 {
-    private static void Postfix(NCharacterSelectScreen __instance) => GravityRunToggle.Refresh(__instance);
+    private static IEnumerable<MethodBase> TargetMethods() => GravityRunToggle.ScreenMethods("OnSubmenuOpened");
+    private static void Postfix(Control __instance) => GravityRunToggle.Refresh(__instance);
 }
 
-[HarmonyPatch(typeof(NCharacterSelectScreen), "OnEmbarkPressed")]
+[HarmonyPatch]
 internal static class LockGravityRunTogglePatch
 {
-    private static void Postfix(NCharacterSelectScreen __instance)
+    private static IEnumerable<MethodBase> TargetMethods() => GravityRunToggle.ScreenMethods("OnEmbarkPressed");
+    private static void Postfix(Control __instance)
     {
         if (__instance.GetNodeOrNull<CheckButton>("GravityRunToggle") is { } toggle)
             toggle.Disabled = true;
     }
 }
 
-[HarmonyPatch(typeof(NCharacterSelectScreen), "OnUnreadyPressed")]
+[HarmonyPatch]
 internal static class UnlockGravityRunTogglePatch
 {
-    private static void Postfix(NCharacterSelectScreen __instance) => GravityRunToggle.Refresh(__instance);
+    private static IEnumerable<MethodBase> TargetMethods() => GravityRunToggle.ScreenMethods("OnUnreadyPressed");
+    private static void Postfix(Control __instance) => GravityRunToggle.Refresh(__instance);
 }

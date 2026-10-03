@@ -98,6 +98,7 @@ internal static class SettingsTests
     {
         VerifyPreferences();
         VerifyVersionMatching();
+        foreach (var mode in new[] { GameMode.Standard, GameMode.Custom })
         foreach (var requirement in new[] { -1, 0, 1, 15, 99, 999, 1000 })
         foreach (var locked in new[] { false, true })
         foreach (var disabled in new[] { false, true })
@@ -105,7 +106,8 @@ internal static class SettingsTests
             var other = (OtherSettingsModifier)ModelDb.Modifier<OtherSettingsModifier>().ToMutable();
             other.CombatsLeft = 871;
             other.IsUsed = true;
-            var state = NewState([other]);
+            var state = NewState(mode == GameMode.Custom
+                ? [other, ModelDb.Modifier<SealedDeck>().ToMutable()] : [other], mode);
             GravityRunSettings.Set(state, requirement, locked, disabled);
             GravitySettings.RestoreEncounterPreferences(4, true);
             GravitySettings.LockEncountersAfterBossUnlock = !locked;
@@ -117,7 +119,9 @@ internal static class SettingsTests
             var restored = RunState.FromSerializable(loaded);
             Check(GravityRunSettings.GetSnapshot(restored) == snapshot, "Disk load changed run settings");
             var otherRestored = restored.Modifiers.OfType<OtherSettingsModifier>().Single();
-            Check(restored.Modifiers.Count == 1 && otherRestored.CombatsLeft == 871 && otherRestored.IsUsed,
+            Check(restored.GameMode == mode && restored.Modifiers.Count == state.Modifiers.Count
+                && (mode != GameMode.Custom || restored.Modifiers.OfType<SealedDeck>().Count() == 1)
+                && otherRestored.CombatsLeft == 871 && otherRestored.IsUsed,
                 "Settings must not add gameplay modifiers or alter another mod");
             Check(GravitySettings.NextRunRequirement == 4 && GravitySettings.LockEncountersAfterBossUnlock == !locked,
                 "Loading must not change personal preferences");
@@ -199,9 +203,9 @@ internal static class SettingsTests
         throw new Exception(message);
     }
 
-    internal static RunState NewState(IReadOnlyList<ModifierModel>? modifiers = null)
+    internal static RunState NewState(IReadOnlyList<ModifierModel>? modifiers = null, GameMode mode = GameMode.Standard)
     {
-        return RunState.CreateForNewRun([], [], modifiers ?? [], GameMode.Standard, 0, "GRAVITYTEST");
+        return RunState.CreateForNewRun([], [], modifiers ?? [], mode, 0, "GRAVITYTEST");
     }
 
     internal static SerializableRun Save(RunState state) => new()

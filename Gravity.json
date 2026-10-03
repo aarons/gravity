@@ -3,7 +3,7 @@
   "name": "Gravity",
   "author": "Laethos",
   "description": "Encounters fall into a pile and can be completed in any order. After 15 encounters (configurable) the boss is unlocked. Have fun!\n\nNote: multiplayer support is still being improved. If you run into any issues, please let me know. Detail on how to reproduce the error is always appreciated, but no pressure, just letting me know something went wrong is good too.",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "min_game_version": "0.107.1",
   "has_pck": false,
   "has_dll": true,

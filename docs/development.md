@@ -16,6 +16,9 @@ The integration harness installs and removes Harmony patches in a separate proce
 against the installed game assemblies. It does not open or change a run. Its
 multiplayer fixtures use stand-ins for sockets and scenes; offline checks do not
 replace in-game testing of UI, full runs, or live co-op.
+Settings tests include standard and custom Sealed Deck runs with Gravity both on
+and off, disk save/load, multiplayer startup, saved-lobby joins, live-rejoin
+messages, and the client's remembered settings when a reconnect snapshot is missing.
 The optional `--map-only` run isolates travel, history, and reveal eligibility from
 the settings and network patches, including resumed acts and fresh later acts.
 

@@ -29,11 +29,13 @@ The page scrolls vertically, keeping run details, relics, and deck entries align
 
 ## Settings
 
-Turn **Gravity** on or off using the labeled switch at the bottom right, below
-the character portraits on the character and difficulty selection screen.
+Turn **Gravity** on or off using the labeled switch below the character portraits
+on the standard character-selection screen or the custom-run setup screen.
 On by default; your last choice is remembered. Turning it off uses
 the normal map and travel rules. In co-op, the host chooses for everyone.
-Existing saves keep Gravity enabled.
+Saves from before the toggle was added keep Gravity enabled.
+Custom runs use the same switch, including runs with Sealed Deck. The choice stays
+with the run when saving, loading, or reconnecting; no Gravity modifier is needed.
 
 Open **Mods → Gravity** to configure new runs. If installed, BaseLib and RitsuLib
 also provide access through their mod-settings panels.
