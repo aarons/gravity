@@ -99,6 +99,21 @@ restart. Omit `--headless` and set `GRAVITY_SETUP_SCREENSHOT` to
 an output PNG path for a rendered setup screenshot. This does not replace live
 co-op or manual controller testing.
 
+### Native encounter-selector regression
+
+Build `tests/GravityEncounterSelectorTests` with `dotnet build
+tests/GravityEncounterSelectorTests -c Release`. Install its DLL and JSON alongside
+Gravity in a disposable game copy with an isolated profile, then launch with
+`--headless --force-steam off --clientId 1`. This test starts a custom run and
+changes its map; never use a normal profile.
+
+The test exercises all six native legend rows, click bounds, available counts,
+random selections, exhaustion, travel guards, boss locking, and map reattachment
+and cleanup. It intercepts the native selection boundary instead of entering rooms.
+Look for `ENCOUNTER SELECTOR TEST PASS` and exit status 0. For a rendered map,
+omit `--headless` and set `GRAVITY_SELECTOR_SCREENSHOT` to an output PNG path.
+Manual controller and live co-op testing remain separate checks.
+
 ## Alternate game installations
 
 Use the `Sts2DataDir` MSBuild property to build against another installation's

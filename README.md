@@ -18,6 +18,13 @@ By default, ordinary encounters lock after 15 visits, requiring you to move on t
 the boss. Acts with multiple bosses keep their boss sequence. Each
 act starts a fresh encounter count. The pile stays in place when you reopen the
 map or reload a save, and controller navigation follows the new layout.
+
+The map legend becomes **Choose**. Click an encounter's icon or name to select a
+random available encounter of that type; in co-op, this casts your normal map vote.
+Each row shows the available count and grays out when none remain. Hovering still
+shows the encounter description and highlights that type on the map.
+Available encounter names darken slightly on hover or controller focus.
+
 Fresh acts make a best-effort falling reveal when the map is visible, allowing
 extra selection pages after the Ancient to finish first. The map stays usable
 while waiting; closing it or choosing a destination finishes the reveal immediately.

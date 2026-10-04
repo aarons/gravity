@@ -1,0 +1,10 @@
+{
+  "id": "GravityEncounterSelectorTests",
+  "name": "Gravity encounter selector tests",
+  "author": "Gravity",
+  "description": "Native map selector regression tests. Use only in a disposable game profile.",
+  "version": "1.0.0",
+  "has_pck": false,
+  "has_dll": true,
+  "affects_gameplay": false
+}

@@ -2,6 +2,8 @@
   "run.enabled": "Gravity",
   "mod.loaded": "Mod loaded.",
   "map.progress": "{0}/{1}",
+  "map.choose": "Choose",
+  "map.choose.count": "{0} ({1})",
   "map.progress.title": "Encounters",
   "map.progress.description": "Encounters visited this act. Visit {0} to unlock the boss.",
   "map.progress.unrestricted": "Encounters visited this act. No boss unlock requirement.",

@@ -22,6 +22,7 @@ internal sealed class GravityMapView
     private readonly NMapPoint[] _nodes;
     private readonly Control _container;
     private readonly GravityProgressDisplay _progressDisplay;
+    private readonly GravityEncounterSelector _encounterSelector;
     private readonly Vec[][] _frames;
     private readonly Vector2[] _centerOffsets;
     private readonly string _key;
@@ -42,6 +43,7 @@ internal sealed class GravityMapView
             old.UnsubscribeAppearance();
             screen.TreeExiting -= old.UnsubscribeAppearance;
             old._progressDisplay.Free();
+            old._encounterSelector.Detach();
         }
         Views.Remove(screen);
         if (GravityRules.Applies(run))
@@ -93,6 +95,7 @@ internal sealed class GravityMapView
         }
         _progressDisplay = new GravityProgressDisplay(_nodes.Select((node, i) =>
             (Node: node, Radius: bodies[i].Radius - 12f)).Where(item => item.Node.Point.PointType == MapPointType.Boss));
+        _encounterSelector = new GravityEncounterSelector(screen, run, _nodes, this);
         GravitySettings.AppearanceChanged += UpdateStatus;
         screen.TreeExiting += UnsubscribeAppearance;
         ApplyFrame(_playback.Frame);
@@ -207,6 +210,7 @@ internal sealed class GravityMapView
     {
         var progress = GravityRules.Progress(_run);
         _progressDisplay.Update(progress.EncountersVisited, progress.RequiredEncounters, Falling);
+        _encounterSelector.Refresh(progress);
     }
 
     public void UpdateNavigation()
