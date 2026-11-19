@@ -1,12 +1,14 @@
 # Working in this mod
 
-- Start with README.md. If the root project is still `MyMod.csproj`, this is an
-  unnamed template; use `scripts/setup_mod.py` when the user supplies the identity.
+- Start with README.md.
 - Keep mod behavior under `src/`. Use the existing localization helper and literal
   `Localize("key")` calls for player-facing text. Keep the scaffolding simple.
 - Update the README with actual features and UI context before localization review.
 - `./install.sh` validates English and installs for local testing; restart the game.
   `dotnet build -c Release` builds without installing. Honor game-path overrides.
+- For direct test launches, keep Steam running and put `steam_appid.txt` containing
+  `2868840` beside the game executable (on macOS, inside
+  `SlayTheSpire2.app/Contents/MacOS`).
 - Use `./update-localizations.sh` for the dedicated translation pass. Commit its
   review fingerprints with translations; do not manufacture current review records.
 - Use `./prepare.sh` to prepare a release and `./release.sh --dry-run` to inspect it.
@@ -17,6 +19,11 @@
 - Update the root mod JSON's version and the changelog together for releases.
 - When changing tooling, run `python3 -m unittest discover -s tests -v`. These tests
   use fake translation sessions and Steam clients. Test mod behavior in-game as needed.
+
+# Local playtesting authorization
+
+- The user authorizes all actions within Slay the Spire 2 and changes to local
+  game state needed while developing, debugging, or testing this mod.
 
 # General Principles
 

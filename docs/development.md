@@ -114,6 +114,10 @@ Look for `ENCOUNTER SELECTOR TEST PASS` and exit status 0. For a rendered map,
 omit `--headless` and set `GRAVITY_SELECTOR_SCREENSHOT` to an output PNG path.
 Manual controller and live co-op testing remain separate checks.
 
+A fresh profile can show the map-selection tutorial, which blocks the fixture's
+clicks. Complete that tutorial first, or rerun with the same disposable profile
+after it has been marked seen.
+
 ## Alternate game installations
 
 Use the `Sts2DataDir` MSBuild property to build against another installation's
@@ -160,6 +164,26 @@ progression, physics, and playback checks.
 Stable skips the beta-only co-op version-comparison check because it uses the
 older handshake API. This validates the recorded snapshot, not the latest Steam
 public branch. Live co-op and full-run testing were not performed in this pass.
+
+### Beta v0.113.1 compatibility
+
+Verified November 19, 2026 with the installed beta **v0.113.1**. The map marker
+resolves `SetMapPoint(Control)` or the older `SetMapPoint(NMapPoint)` at runtime.
+The encounter tooltip no longer assigns the now-read-only `HoverTip.Id`.
+
+The Release build completed without warnings. All 45 Harmony patches and the full
+offline integration suite passed, including marker binding, tooltip creation,
+custom-run persistence, and start/load/rejoin settings transfer. The fixtures
+support both the older custom game mode and the beta's separate custom-run flag,
+and supply the connection metadata used by the beta's disconnect diagnostics.
+The pure suite passed 24,982 progression, physics, and playback checks.
+
+The native encounter-selector test started a custom run and passed all six types,
+clicks, counts, exhaustion, travel guards, boss locking, and map lifecycle checks
+in a disposable headless game copy. The first attempt was blocked by the fresh
+profile's tutorial; the repeat passed after it was marked seen. This desktop has
+no stable snapshot, so stable compatibility was not revalidated in this pass.
+Rendered UI, live co-op, and full-run testing remain separate checks.
 
 If the game reports that Gravity failed to initialize, inspect the exception in
 `SlayTheSpire2/logs/godot.log`. The generic assembly error does not identify the cause.

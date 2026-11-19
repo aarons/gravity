@@ -179,7 +179,7 @@ internal sealed class GravityMapView
     private void RefreshMarker()
     {
         var current = _nodes.FirstOrDefault(node => node.Point.coord == _run.CurrentMapCoord);
-        if (current != null) _screen.GetNode<NMapMarker>("TheMap/MapMarker").SetMapPoint(current);
+        if (current != null) GravityMapMarker.SetMapPoint(_screen.GetNode<NMapMarker>("TheMap/MapMarker"), current);
     }
 
     private void ApplyFrame(int frame)

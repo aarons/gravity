@@ -77,6 +77,9 @@ Mods that replace map travel or draw route overlays may conflict. The original
 map graph remains available to game content, so effects based on its rows or paths
 may need compatibility work. Map Guide's Pathfinder still describes that original graph.
 
+The map marker and encounter tooltip support the API changes in beta **v0.113.1**.
+The marker binding also accepts the older stable signature.
+
 Offline checks cover progression, saved settings, and multiplayer payloads;
 they do not establish live co-op or full-run compatibility across game versions.
 

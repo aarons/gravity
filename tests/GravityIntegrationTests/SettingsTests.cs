@@ -98,7 +98,7 @@ internal static class SettingsTests
     {
         VerifyPreferences();
         VerifyVersionMatching();
-        foreach (var mode in new[] { GameMode.Standard, GameMode.Custom })
+        foreach (var custom in new[] { false, true })
         foreach (var requirement in new[] { -1, 0, 1, 15, 99, 999, 1000 })
         foreach (var locked in new[] { false, true })
         foreach (var disabled in new[] { false, true })
@@ -106,8 +106,9 @@ internal static class SettingsTests
             var other = (OtherSettingsModifier)ModelDb.Modifier<OtherSettingsModifier>().ToMutable();
             other.CombatsLeft = 871;
             other.IsUsed = true;
-            var state = NewState(mode == GameMode.Custom
-                ? [other, ModelDb.Modifier<SealedDeck>().ToMutable()] : [other], mode);
+            var mode = Mode(custom);
+            var state = NewState(custom
+                ? [other, ModelDb.Modifier<SealedDeck>().ToMutable()] : [other], mode, custom);
             GravityRunSettings.Set(state, requirement, locked, disabled);
             GravitySettings.RestoreEncounterPreferences(4, true);
             GravitySettings.LockEncountersAfterBossUnlock = !locked;
@@ -123,8 +124,9 @@ internal static class SettingsTests
             var restored = RunState.FromSerializable(loaded);
             Check(GravityRunSettings.GetSnapshot(restored) == snapshot, "Disk load changed run settings");
             var otherRestored = restored.Modifiers.OfType<OtherSettingsModifier>().Single();
-            Check(restored.GameMode == mode && restored.Modifiers.Count == state.Modifiers.Count
-                && (mode != GameMode.Custom || restored.Modifiers.OfType<SealedDeck>().Count() == 1)
+            Check(restored.GameMode == mode && IsCustom(restored) == custom
+                && restored.Modifiers.Count == state.Modifiers.Count
+                && (!custom || restored.Modifiers.OfType<SealedDeck>().Count() == 1)
                 && otherRestored.CombatsLeft == 871 && otherRestored.IsUsed,
                 "Settings must not add gameplay modifiers or alter another mod");
             Check(GravitySettings.NextRunRequirement == 4 && GravitySettings.LockEncountersAfterBossUnlock == !locked,
@@ -209,21 +211,46 @@ internal static class SettingsTests
         throw new Exception(message);
     }
 
-    internal static RunState NewState(IReadOnlyList<ModifierModel>? modifiers = null, GameMode mode = GameMode.Standard)
+    // v0.113 moved custom runs from GameMode.Custom to a separate boolean.
+    // Keep a single harness runnable against both installed game branches.
+    internal static GameMode Mode(bool custom) => custom && Enum.TryParse<GameMode>("Custom", out var mode)
+        ? mode : GameMode.Standard;
+
+    internal static bool IsCustom(object runOrLobby)
     {
-        return RunState.CreateForNewRun([], [], modifiers ?? [], mode, 0, "GRAVITYTEST");
+        var type = runOrLobby.GetType();
+        var property = AccessTools.Property(type, "IsCustomGame") ?? AccessTools.Property(type, "IsCustom");
+        return property != null ? (bool)property.GetValue(runOrLobby)!
+            : Enum.TryParse<GameMode>("Custom", out var custom)
+                && (GameMode)AccessTools.Property(type, "GameMode").GetValue(runOrLobby)! == custom;
     }
 
-    internal static SerializableRun Save(RunState state) => new()
+    internal static RunState NewState(IReadOnlyList<ModifierModel>? modifiers = null,
+        GameMode mode = GameMode.Standard, bool custom = false)
     {
-        Modifiers = state.Modifiers.Select(m => m.ToSerializable()).ToList(),
-        Players = state.Players.Select(p => p.ToSerializable()).ToList(),
-        SerializableRng = state.Rng.ToSerializable(),
-        SerializableOdds = state.Odds.ToSerializable(),
-        SerializableSharedRelicGrabBag = state.SharedRelicGrabBag.ToSerializable(),
-        ExtraFields = state.ExtraFields.ToSerializable(),
-        GameMode = state.GameMode,
-    };
+        var create = AccessTools.Method(typeof(RunState), nameof(RunState.CreateForNewRun));
+        object[] args = [Array.Empty<MegaCrit.Sts2.Core.Entities.Players.Player>(),
+            Array.Empty<ActModel>(), modifiers ?? Array.Empty<ModifierModel>(), mode];
+        args = args.Concat(create.GetParameters().Length == 7
+            ? new object[] { custom, 0, "GRAVITYTEST" } : [0, "GRAVITYTEST"]).ToArray();
+        return (RunState)create.Invoke(null, args)!;
+    }
+
+    internal static SerializableRun Save(RunState state)
+    {
+        var save = new SerializableRun
+        {
+            Modifiers = state.Modifiers.Select(m => m.ToSerializable()).ToList(),
+            Players = state.Players.Select(p => p.ToSerializable()).ToList(),
+            SerializableRng = state.Rng.ToSerializable(),
+            SerializableOdds = state.Odds.ToSerializable(),
+            SerializableSharedRelicGrabBag = state.SharedRelicGrabBag.ToSerializable(),
+            ExtraFields = state.ExtraFields.ToSerializable(),
+            GameMode = state.GameMode,
+        };
+        AccessTools.Property(typeof(SerializableRun), "IsCustomGame")?.SetValue(save, IsCustom(state));
+        return save;
+    }
 
     private static void VerifyPreferences()
     {

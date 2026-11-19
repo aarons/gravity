@@ -66,7 +66,9 @@ internal static class GravityTopBarProgress
 
     public static HoverTip Tooltip(RunState run)
     {
-        object tip = new HoverTip { Id = "Gravity.Encounters" };
+        // This standalone tooltip needs no deduplication ID. The game accepts an
+        // empty ID, and v0.113 removed HoverTip.Id's setter.
+        object tip = new HoverTip();
         TipTitle.SetValue(tip, MainFile.Localize("map.progress.title"));
         var required = GravityRules.Progress(run).RequiredEncounters;
         TipDescription.SetValue(tip, (required == 0 ? MainFile.Localize("map.progress.unrestricted")
