@@ -77,8 +77,8 @@ Mods that replace map travel or draw route overlays may conflict. The original
 map graph remains available to game content, so effects based on its rows or paths
 may need compatibility work. Map Guide's Pathfinder still describes that original graph.
 
-The map marker and encounter tooltip support the API changes in beta **v0.113.1**.
-The marker binding also accepts the older stable signature.
+The same mod DLL supports stable **v0.111.1** and beta **v0.113.1**. The map marker
+binds to either branch's API at runtime, and the encounter tooltip supports both.
 
 Offline checks cover progression, saved settings, and multiplayer payloads;
 they do not establish live co-op or full-run compatibility across game versions.
@@ -100,30 +100,38 @@ removes the local development copy, including any extra files in that mod folder
 
 ### Local stable snapshot
 
-On Aaron's development machine, the stable installation is preserved outside
-Steam at `/Users/aaron/code/sts2-game-builds/stable-23811903/game`
-(public branch, Steam build **23811903**, copied September 27, 2026).
-The parent folder contains `steam-appmanifest.acf` and `snapshot.json` with
-verified SHA-256 checksums for all 430 copied files. Steam can switch the regular
-installation to beta without replacing this copy. Keep the snapshot unchanged;
-build against it without installing into it:
+On this development machine, both branches are preserved outside Steam under
+`output/compatibility/2026-11-19/` (ignored by Git):
+
+| Copy | Game version | Steam build | Verified files |
+| --- | --- | --- | --- |
+| `stable-game/` | v0.111.1 | 26655341 | 438 |
+| `beta-game/` | v0.113.1 | 26660232 | 442 |
+
+Each copy has an adjacent `*-appmanifest.acf` and `*-snapshot.json` recording
+its branch, build, and verified SHA-256 checksums. Steam can switch branches
+without replacing these copies. Keep the snapshots unchanged; build against
+them without installing into them:
 
 ```sh
-dotnet build -c Release -p:Sts2Path=/Users/aaron/code/sts2-game-builds/stable-23811903/game
+dotnet build -c Release -p:Sts2Path="$PWD/output/compatibility/2026-11-19/stable-game"
 dotnet run --project tests/GravityIntegrationTests -c Release \
-  -p:Sts2Path=/Users/aaron/code/sts2-game-builds/stable-23811903/game
+  -p:Sts2Path="$PWD/output/compatibility/2026-11-19/stable-game"
 ```
 
 To test an already-built integration harness and mod DLL against stable without
 rebuilding either:
 
 ```sh
-GRAVITY_TEST_GAME_DATA="/Users/aaron/code/sts2-game-builds/stable-23811903/game/SlayTheSpire2.app/Contents/Resources/data_sts2_macos_arm64" \
+GRAVITY_TEST_GAME_DATA="$PWD/output/compatibility/2026-11-19/stable-game/SlayTheSpire2.app/Contents/Resources/data_sts2_macos_arm64" \
   dotnet tests/GravityIntegrationTests/bin/Release/net9.0/GravityIntegrationTests.dll
 ```
 
-Check Steam's currently selected branch before using the default build paths.
-The snapshot is a separate installation copy, not an isolated save profile.
+Use `beta-game` in either command to target beta. Check Steam's currently selected
+branch before using the default build paths. These snapshots are separate
+installation copies, not isolated save profiles; native tests use additional
+disposable copies and isolated profiles. The older v0.107.1 snapshot previously
+documented at `/Users/aaron/code/sts2-game-builds/` is absent on this machine.
 
 Keep mod behavior in `src/` and player-facing text in the localization files,
 using the existing helper with literal `Localize("key")` calls. Feature work

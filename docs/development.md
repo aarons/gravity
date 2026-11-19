@@ -181,12 +181,54 @@ The pure suite passed 24,982 progression, physics, and playback checks.
 The native encounter-selector test started a custom run and passed all six types,
 clicks, counts, exhaustion, travel guards, boss locking, and map lifecycle checks
 in a disposable headless game copy. The first attempt was blocked by the fresh
-profile's tutorial; the repeat passed after it was marked seen. This desktop has
-no stable snapshot, so stable compatibility was not revalidated in this pass.
+profile's tutorial; the repeat passed after it was marked seen. Stable was not
+available during that initial pass; the subsequent branch check is recorded below.
 Rendered UI, live co-op, and full-run testing remain separate checks.
 
 If the game reports that Gravity failed to initialize, inspect the exception in
 `SlayTheSpire2/logs/godot.log`. The generic assembly error does not identify the cause.
+
+### Stable v0.111.1 and beta v0.113.1 cross-compatibility
+
+Verified November 19, 2026 using Gravity 1.3.1 at commit `91bd728`, with no mod
+code changes needed. Steam's public branch was **v0.111.1**, build **26655341**;
+public-beta was **v0.113.1**, build **26660232**. Both installations were copied
+and every copied file checked against its source. See the
+[local snapshots](../README.md#local-stable-snapshot) for paths and checksums.
+
+Both Release builds completed with zero compiler warnings or errors and produced
+the same `Gravity.dll` SHA-256:
+`f9e6c31c022ef81a910bfe093915305c89da7540bffde5a240a96dc126869b4f`.
+Each integration harness was then run against both snapshots with
+`GRAVITY_TEST_GAME_DATA`, without rebuilding between runtime checks:
+
+| Built against | Run against stable v0.111.1 | Run against beta v0.113.1 |
+| --- | --- | --- |
+| Stable v0.111.1 | Passed | Passed |
+| Beta v0.113.1 | Passed | Passed |
+
+All four runs installed 45 Harmony patches and passed the full integration suite:
+map-marker binding, encounter tooltips, travel and boss progression, persisted
+settings, legacy saves, Neow choices, and simulated multiplayer start/load/rejoin
+transfer. The pure suite passed 24,982 checks, and English localization validated.
+
+The exact beta-built mod and native test DLLs also passed inside both headless
+game copies. All six launches exited with status 0: custom-run setup (including
+scrolling portraits), disabled-run disk persistence, restoration after a process
+restart, and encounter selection across all six types with counts, exhaustion,
+travel guards, boss locking, and map cleanup. Tutorials were disabled in the
+disposable selector profiles so they could not intercept fixture clicks.
+The headless logs also contain renderer/worker-task errors and resource-cleanup
+warnings; these runs check native behavior, not rendered output.
+
+Evidence is retained under `output/compatibility/2026-11-19/`, including both build
+outputs, `*-integration.log`, native logs, and `results.json`. Snapshot folders are kept
+unchanged; native tests use separate `stable-native/` and `beta-native/` copies
+and isolated profiles under
+`~/Library/Application Support/GravityCompatibilityTests/20261119-cross-{stable,beta}/`.
+
+This validates the recorded game versions on macOS ARM64. It does not establish
+mixed-branch multiplayer, live co-op, rendered UI, or full-run compatibility.
 
 ## Optional mod integrations
 

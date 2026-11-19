@@ -11,6 +11,7 @@ __pycache__/
 /archive/
 /output/recordings/
 /output/multiplayer/
+/output/compatibility/
 mod-uploader.log
 .godot/
 
