@@ -2,6 +2,8 @@
   "run.enabled": "Gravity",
   "mod.loaded": "모드를 불러왔습니다.",
   "map.progress": "{0}/{1}",
+  "map.choose": "선택",
+  "map.choose.count": "{0} ({1})",
   "map.progress.title": "지점",
   "map.progress.description": "이번 막에서 방문한 지점 수입니다. {0}곳을 방문하면 보스가 해금됩니다.",
   "map.progress.unrestricted": "이번 막에서 방문한 지점 수입니다. 보스 해금 조건이 없습니다.",

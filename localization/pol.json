@@ -2,6 +2,8 @@
   "run.enabled": "Gravity",
   "mod.loaded": "Mod załadowany.",
   "map.progress": "{0}/{1}",
+  "map.choose": "Wybierz",
+  "map.choose.count": "{0} ({1})",
   "map.progress.title": "Spotkania",
   "map.progress.description": "Odwiedzone spotkania w tym akcie. Odwiedź {0}, aby odblokować bossa.",
   "map.progress.unrestricted": "Odwiedzone spotkania w tym akcie. Boss nie wymaga odblokowania.",

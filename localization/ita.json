@@ -2,6 +2,8 @@
   "run.enabled": "Gravity",
   "mod.loaded": "Mod caricata.",
   "map.progress": "{0}/{1}",
+  "map.choose": "Scegli",
+  "map.choose.count": "{0} ({1})",
   "map.progress.title": "Incontri",
   "map.progress.description": "Incontri visitati in questo atto. Visitane {0} per sbloccare il boss.",
   "map.progress.unrestricted": "Incontri visitati in questo atto. Nessun requisito per sbloccare il boss.",

@@ -2,6 +2,8 @@
   "run.enabled": "Gravity",
   "mod.loaded": "โหลดม็อดแล้ว",
   "map.progress": "{0}/{1}",
+  "map.choose": "เลือก",
+  "map.choose.count": "{0} ({1})",
   "map.progress.title": "จุดเผชิญหน้า",
   "map.progress.description": "จำนวนจุดเผชิญหน้าที่ไปแล้วในบทนี้ ไปให้ครบ {0} จุดเพื่อปลดล็อกบอส",
   "map.progress.unrestricted": "จำนวนจุดเผชิญหน้าที่ไปแล้วในบทนี้ ไม่มีเงื่อนไขในการปลดล็อกบอส",

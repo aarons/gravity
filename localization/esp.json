@@ -2,6 +2,8 @@
   "run.enabled": "Gravity",
   "mod.loaded": "Mod cargado.",
   "map.progress": "{0}/{1}",
+  "map.choose": "Elige",
+  "map.choose.count": "{0} ({1})",
   "map.progress.title": "Encuentros",
   "map.progress.description": "Encuentros visitados en este acto. Visita {0} para desbloquear al jefe.",
   "map.progress.unrestricted": "Encuentros visitados en este acto. Sin requisitos para desbloquear al jefe.",

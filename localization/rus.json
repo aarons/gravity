@@ -2,6 +2,8 @@
   "run.enabled": "Gravity",
   "mod.loaded": "Мод загружен.",
   "map.progress": "{0}/{1}",
+  "map.choose": "Выбрать",
+  "map.choose.count": "{0} ({1})",
   "map.progress.title": "Встречи",
   "map.progress.description": "Пройденные встречи в этом акте. Пройдите {0}, чтобы открыть доступ к боссу.",
   "map.progress.unrestricted": "Пройденные встречи в этом акте. Для доступа к боссу нет требований.",

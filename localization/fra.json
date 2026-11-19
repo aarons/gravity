@@ -2,6 +2,8 @@
   "run.enabled": "Gravity",
   "mod.loaded": "Mod chargé.",
   "map.progress": "{0}/{1}",
+  "map.choose": "Choisir",
+  "map.choose.count": "{0} ({1})",
   "map.progress.title": "Rencontres",
   "map.progress.description": "Rencontres effectuées dans cet acte. Faites-en {0} pour débloquer le boss.",
   "map.progress.unrestricted": "Rencontres effectuées dans cet acte. Aucune condition pour débloquer le boss.",

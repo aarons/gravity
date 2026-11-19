@@ -2,6 +2,8 @@
   "run.enabled": "Gravity",
   "mod.loaded": "模组已加载。",
   "map.progress": "{0}/{1}",
+  "map.choose": "选择",
+  "map.choose.count": "{0}（{1}）",
   "map.progress.title": "遭遇",
   "map.progress.description": "本幕已进入的遭遇数。进入{0}次遭遇即可解锁首领。",
   "map.progress.unrestricted": "本幕已进入的遭遇数。首领无解锁要求。",

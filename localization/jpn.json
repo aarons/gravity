@@ -2,6 +2,8 @@
   "run.enabled": "Gravity",
   "mod.loaded": "Modを読み込みました。",
   "map.progress": "{0}/{1}",
+  "map.choose": "選択",
+  "map.choose.count": "{0} ({1})",
   "map.progress.title": "マス",
   "map.progress.description": "この層で訪れたマスの数。{0}マス訪れるとボスが解放されます。",
   "map.progress.unrestricted": "この層で訪れたマスの数。ボスの解放条件はありません。",

@@ -2,6 +2,8 @@
   "run.enabled": "Gravity",
   "mod.loaded": "Mod geladen.",
   "map.progress": "{0}/{1}",
+  "map.choose": "Auswählen",
+  "map.choose.count": "{0} ({1})",
   "map.progress.title": "Begegnungen",
   "map.progress.description": "Besuchte Begegnungen in diesem Akt. Besuche {0}, um den Boss freizuschalten.",
   "map.progress.unrestricted": "Besuchte Begegnungen in diesem Akt. Der Boss muss nicht freigeschaltet werden.",

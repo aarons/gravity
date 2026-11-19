@@ -2,6 +2,8 @@
   "run.enabled": "Gravity",
   "mod.loaded": "Mod yüklendi.",
   "map.progress": "{0}/{1}",
+  "map.choose": "Seç",
+  "map.choose.count": "{0} ({1})",
   "map.progress.title": "Karşılaşmalar",
   "map.progress.description": "Bu bölümde ziyaret edilen karşılaşmalar. Patronun kilidini açmak için {0} karşılaşma ziyaret et.",
   "map.progress.unrestricted": "Bu bölümde ziyaret edilen karşılaşmalar. Patronun kilidini açmak için koşul yok.",
